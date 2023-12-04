@@ -3,15 +3,15 @@
 use std::sync::{Arc, RwLock, mpsc};
 
 use draw::{create_window, window_loop};
-use logic::spawn_logic_thread;
+use classic::logic::spawn_logic_thread;
 
 
 mod types;
 mod draw;
-mod logic;
+mod classic;
 
 fn main() {
-    let (board, state) = logic::reset();
+    let (board, state) = classic::logic::reset();
     
     let mut window = create_window();
 
