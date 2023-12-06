@@ -1,7 +1,7 @@
 
 use std::{collections::VecDeque, ops::Range};
 
-use rand::Rng;
+use rand::{Rng, distributions::{Distribution, Standard}};
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
@@ -17,9 +17,16 @@ pub enum CellObject {
     #[default]
     None,
     Wall,
+    Snake(bool),
     Food,
     Seed,
     Powerup(PowerupType),
+    Border,
+}
+impl CellObject {
+    pub fn is_powerup(&self) -> bool {
+        matches!(self, Self::Powerup(_))
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
@@ -27,7 +34,19 @@ pub enum PowerupType {
     Water,
     Explosive,
     Turf,
+    Seed,
     Invincibility,
+}
+impl Distribution<PowerupType> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PowerupType {
+        match rng.gen_range(0..5) {
+            0 => PowerupType::Water,
+            1 => PowerupType::Explosive,
+            2 => PowerupType::Turf,
+            3 => PowerupType::Invincibility,
+            _ => PowerupType::Seed,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -67,6 +86,56 @@ impl Board {
     }
     pub fn iter_mut(&mut self) -> std::slice::IterMut<[CellState; B_WIDTH]> {
         self.0.iter_mut()
+    }
+    pub fn surrounding_mut<F>(&mut self, thing: F)
+        where F: Fn(&mut CellState, [&mut CellState; 8])
+    {
+        for y in 0..B_HEIGHT - 2 {
+            let (_, rest) = self.0.split_at_mut(y);
+            let (rows, _) = rest.split_at_mut(3);
+            if let [top, middle, bottom] = rows {
+                for x in 0..B_WIDTH - 2 {
+                    let (_, rest) = top.split_at_mut(x);
+                    let (top, _) = rest.split_at_mut(3);
+
+                    let (_, rest) = middle.split_at_mut(x);
+                    let (middle, _) = rest.split_at_mut(3);
+
+                    let (_, rest) = bottom.split_at_mut(x);
+                    let (bottom, _) = rest.split_at_mut(3);
+
+                    if let (
+                        [c1, c2, c3],
+                        [c4, c5, c6],
+                        [c7, c8, c9]
+                    ) = (top, middle, bottom) {
+                        thing(c5, [c1, c2, c3, c4, c6, c7, c8, c9]);
+                    } // else, how??
+                }
+            } // else, how??
+        }
+    }
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let mut board = Board([[CellState::default(); B_WIDTH]; B_HEIGHT]);
+
+        for (i, &byte) in bytes.iter().enumerate() {
+            let x = i % B_WIDTH;
+            let y = i / B_WIDTH;
+
+            if y < B_HEIGHT {
+                board.0[y][x] = match byte {
+                    0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None },
+                    0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None },
+                    0x2 => CellState { floor: CellFloor::Lava, obj: CellObject::None },
+                    0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None },
+                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall },
+                    0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border },
+                    _ => CellState::default(),
+                };
+            }
+        }
+
+        board
     }
 }
 
@@ -130,12 +199,20 @@ impl Coord {
         Coord { x: new_x, y: new_y }
     }
     pub fn in_bounds(&self) -> bool {
-        self.x >= B_WIDTH || self.y >= B_HEIGHT
+        self.x < B_WIDTH && self.y < B_HEIGHT
     }
 }
 impl From<(usize, usize)> for Coord {
     fn from(value: (usize, usize)) -> Self {
         Coord { x: value.0, y: value.1 }
+    }
+}
+impl Distribution<Coord> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Coord {
+        Coord {
+            x: rng.gen_range(1..(B_WIDTH-1)),
+            y: rng.gen_range(1..(B_HEIGHT-1)),
+        }
     }
 }
 
@@ -152,6 +229,16 @@ impl Dir {
     }
     fn is_opposite(&self, other: Dir) -> bool {
         (*self as usize).abs_diff(other as usize) == 2
+    }
+}
+impl Distribution<Dir> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Dir {
+        match rng.gen_range(0..4) {
+            0 => Dir::Up,
+            1 => Dir::Left,
+            2 => Dir::Down,
+            _ => Dir::Right,
+        }
     }
 }
 
@@ -240,9 +327,12 @@ impl Snake {
 }
 
 pub struct GameState {
+    pub current_level: usize,
     pub board: Board,
     pub snake: Snake,
     pub snake_len: usize,
+    /// The color the next head will have
+    pub snake_color: bool,
     pub timer: usize,
     /// Time in frames until invincibility is gone
     pub invinc_time: usize,
@@ -251,4 +341,14 @@ pub struct GameState {
     pub failed: bool,
     /// The frame number from logic's perspective
     pub frame_num: usize,
+
+    pub water_pwrs: usize,
+    pub explo_pwrs: usize,
+    pub turf_pwrs: usize,
+    pub seed_pwrs: usize,
+
+    pub empty_count: usize,
+    pub water_count: usize,
+    pub lava_count: usize,
+    pub turf_count: usize,
 }

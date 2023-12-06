@@ -2,8 +2,11 @@ use super::types::{Coord, Board, CellState, CellFloor, CellObject};
 
 use crate::text::{GRIDS, C_WIDTH, CharGrid};
 
+const EXPLOSION_WALK_COUNT: usize = 30;
+const EXPLOSION_WALK_MAX_DIST: usize = 30;
+
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
-enum Fill {
+pub enum Fill {
     Floor(CellFloor),
     Object(CellObject),
     Both(CellState),
@@ -24,11 +27,18 @@ impl From<CellState> for Fill {
     }
 }
 impl CellState {
-    fn update(&mut self, fill: impl Into<Fill>) {
+    pub fn update(&mut self, fill: impl Into<Fill>) {
         match fill.into() {
             Fill::Floor(floor) => self.floor = floor,
             Fill::Object(obj) => self.obj = obj,
             Fill::Both(state) => *self = state,
+        }
+    }
+    pub fn matches(&self, other: impl Into<Fill>) -> bool {
+        match other.into() {
+            Fill::Floor(floor) => self.floor == floor,
+            Fill::Object(obj) => self.obj == obj,
+            Fill::Both(state) => *self == state,
         }
     }
 }
@@ -38,6 +48,7 @@ pub trait BoardArt {
     fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>);
     fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>);
     fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>);
+    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Into<Fill>);
 }
 impl BoardArt for Board {
     fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
@@ -65,6 +76,10 @@ impl BoardArt for Board {
                 x += C_WIDTH + 1;
             }
         }
+    }
+
+    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Into<Fill>) {
+        explosion(self, center, fill);
     }
 }
 
@@ -175,5 +190,28 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: impl
             coord = (center.x - y, center.y - x);
             board.pt(coord, fill);
         }
+    }
+}
+
+fn explosion(board: &mut Board, center: impl Into<Coord>, fill: impl Into<Fill>) {
+    let (center, fill) = (center.into(), fill.into());
+    for _ in 0..EXPLOSION_WALK_COUNT {
+        walk(board, center, EXPLOSION_WALK_MAX_DIST, fill);
+    }
+}
+
+fn walk(board: &mut Board, from: impl Into<Coord>, max_dist: usize, fill: impl Into<Fill>) {
+    let mut pos = from.into();
+    let fill = fill.into();
+    for _ in 0..max_dist {
+        if !board.cell_at(pos).matches(fill) {
+            // Do not overwrite a border
+            if !board.cell_at(pos).matches(CellObject::Border) {
+                board.pt(pos, fill);
+            }
+            break;
+        }
+        let dir = rand::random();
+        pos = pos.add_wrapped(dir);
     }
 }

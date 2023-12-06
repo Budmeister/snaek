@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock, mpsc::Sender};
 use into_color::as_color;
 use piston_window::{*, types::Color};
 
-use super::types::{Board, B_WIDTH, CellState, CellFloor, CellObject, PowerupType, GameState};
+use super::types::{B_WIDTH, CellState, CellFloor, CellObject, PowerupType, GameState};
 
 use crate::global::W_WIDTH;
 
@@ -13,17 +13,17 @@ const C_SIZE: usize = W_WIDTH as usize / B_WIDTH;
 
 pub fn draw_board<G: Graphics>(g: &mut G, s: &GameState, transform: math::Matrix2d) {
     clear(EMPTY_COLOR, g);
-    [0].iter();
     for (y, row) in s.board.iter().enumerate() {
         for (x, cell) in row.iter().enumerate() {
             let rect = [(x * C_SIZE) as f64, (y * C_SIZE) as f64, {(x+1) * C_SIZE} as f64, {(y+1) * C_SIZE} as f64];
             let color = get_cell_color(*cell, s);
+            rectangle(color, rect, transform, g);
         }
     }
 }
 
 fn get_cell_color(cell: CellState, s: &GameState) -> Color {
-    if cell.obj == CellObject::None || s.frame_num % 2 == 0 {
+    if cell.obj == CellObject::None || (cell.obj.is_powerup() && s.frame_num % 2 == 0) {
         get_floor_color(cell.floor)
     } else {
         get_object_color(cell.obj)
@@ -41,14 +41,20 @@ fn get_floor_color(floor: CellFloor) -> Color {
 
 fn get_object_color(obj: CellObject) -> Color {
     match obj {
-        CellObject::None => panic!(),
+        CellObject::None => EMPTY_COLOR,
         CellObject::Wall => WALL_COLOR,
+        CellObject::Snake(true) => SNAKE_COLOR_1,
+        CellObject::Snake(false) => SNAKE_COLOR_2,
         CellObject::Food => FOOD_COLOR,
         CellObject::Seed => SEED_COLOR,
         CellObject::Powerup(pwr) => match pwr {
             PowerupType::Water => WATER_COLOR,
-            _ => todo!()
+            PowerupType::Explosive => EXPLOSIVE_COLOR,
+            PowerupType::Turf => TURF_COLOR,
+            PowerupType::Seed => SEED_COLOR,
+            PowerupType::Invincibility => INVINC_COLOR,
         }
+        CellObject::Border => BORDER_COLOR,
     }
 }
 
@@ -82,15 +88,22 @@ pub fn window_loop(window: &mut PistonWindow, s: Arc<RwLock<GameState>>, tx: Sen
 }
 
 // Floor colors
-static EMPTY_COLOR: Color = as_color!("#ffffff");
-static LAVA_COLOR: Color = as_color!("#fcb103");
-static TURF_COLOR: Color = as_color!("#94ff8c");
-static WATER_COLOR: Color = as_color!("#3f38ff");
+const EMPTY_COLOR: Color = as_color!("#ffffff");
+const WATER_COLOR: Color = as_color!("#3f38ff");
+const LAVA_COLOR: Color = as_color!("#fcb103");
+const TURF_COLOR: Color = as_color!("#94ff8c");
 
 // Object colors
-static WALL_COLOR: Color = as_color!("#000000");
-static FOOD_COLOR: Color = as_color!("#11ff00");
-static SEED_COLOR: Color = as_color!("#065e00");
+const WALL_COLOR: Color = as_color!("#000000");
+const FOOD_COLOR: Color = as_color!("#11ff00");
+const SEED_COLOR: Color = as_color!("#065e00");
+const BORDER_COLOR: Color = as_color!("#42005e");
+const SNAKE_COLOR_1: Color = as_color!("#ff6038");
+const SNAKE_COLOR_2: Color = as_color!("#871d03");
+
+// Powerup colors
+const EXPLOSIVE_COLOR: Color = as_color!("#696969");
+const INVINC_COLOR: Color = as_color!("#000000");
 
 trait TryIntoColor {
     type Error;
@@ -132,16 +145,15 @@ impl TryIntoColor for &str {
             Err(_) => return Err("Unable to parse color string"),
         };
 
-        let a;
-        if rest.len() != 0 {
+        let a = if !rest.is_empty() {
             let (a_, rest) = rest.split_at(2);
-            a = match u8::from_str_radix(a_, 16) {
+            match u8::from_str_radix(a_, 16) {
                 Ok(a) => a,
                 Err(_) => return Err("Unable to parse color string"),
-            };
+            }
         } else {
-            a = u8::MAX;
-        }
+            u8::MAX
+        };
 
         Ok([
             r as f32 / u8::MAX as f32,

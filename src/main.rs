@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+// #![windows_subsystem = "windows"]
 
 use std::sync::{Arc, RwLock, mpsc};
 
@@ -14,7 +14,8 @@ mod text;
 fn main() {
     let window = create_window((global::W_WIDTH, global::W_HEIGHT));
     
-    start_classic(window);
+    // start_classic(window);
+    start_snaek(window);
 }
 
 
