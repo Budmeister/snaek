@@ -8,9 +8,9 @@ use std::{
 use piston_window::Key;
 use rand::Rng;
 
-use super::types::{Board, Coord, CellState, Dir, BoardExt, B_HEIGHT, B_WIDTH, GameState, Snake};
+use super::types::{Board, Coord, CellState, Dir, B_HEIGHT, B_WIDTH, GameState, Snake, CellObject};
 
-use super::art::BoardArtExt;
+use super::art::BoardArt;
 
 pub const TIMER_RESET: usize = 100;
 pub const POWERUP_RESET: usize = 100;
@@ -18,28 +18,26 @@ pub const POWERUP_FREEZE_RESET: usize = 10;
 
 pub const MIN_LEN_FOR_FOOD_IN_SCOREBOARD: usize = 10;
 
-pub fn reset() -> (Board, GameState) {
+pub fn reset() -> GameState {
     let mut board = Board::new();
     let snake = Snake::new((10, 5), Dir::Right, 5);
-    let food = (15, 5);
-    place_snake_and_food(&mut board, &snake, food);
-    draw_embelishments(&mut board);
+    place_snake(&mut board, &snake);
 
     let state = GameState {
+        board,
         snake,
         snake_len: 5,
-        food: food.into(),
-        powerup: None,
         timer: TIMER_RESET,
-        powerup_strength: 0,
+        invinc_time: 0,
         powerup_freeze: POWERUP_FREEZE_RESET,
         failed: false,
+        frame_num: 0,
     };
 
-    (board, state)
+    state
 }
 
-pub fn spawn_logic_thread(board: Arc<RwLock<Board>>, mut s: GameState, rx: Receiver<Key>) -> thread::JoinHandle<()> {
+pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<Key>) -> thread::JoinHandle<()> {
 
     // Poll the Lazy
     crate::text::GRIDS.len();
@@ -47,23 +45,23 @@ pub fn spawn_logic_thread(board: Arc<RwLock<Board>>, mut s: GameState, rx: Recei
     thread::spawn(move || {
         loop {
             {
-                let mut board_w = board.write().unwrap();
+                let mut s_w = s.write().unwrap();
                 
-                let poisoned = handle_keys(&rx, &mut board_w, &mut s);
+                let poisoned = handle_keys(&rx, &mut s_w);
                 if poisoned {
                     return;
                 }
 
-                advance_board(&mut board_w, &mut s);
+                advance_board(&mut s_w);
             }
 
-            thread::sleep(time::Duration::from_millis(1000 / s.snake_len as u64));
+            thread::sleep(time::Duration::from_millis(100));
         }
     })
 }
 
 // Returns true if Tx closed
-fn handle_keys(rx: &Receiver<Key>, board: &mut Board, s: &mut GameState) -> bool {
+fn handle_keys(rx: &Receiver<Key>, s: &mut GameState) -> bool {
     match rx.try_recv() {
         Ok(key) => {
             match key {
@@ -87,7 +85,7 @@ fn handle_keys(rx: &Receiver<Key>, board: &mut Board, s: &mut GameState) -> bool
                         s.snake.point(Dir::Right)
                     }
                 }
-                Key::R => (*board, *s) = reset(),
+                Key::R => *s = reset(),
                 _ => return false,
             };
         }
@@ -102,7 +100,7 @@ fn handle_keys(rx: &Receiver<Key>, board: &mut Board, s: &mut GameState) -> bool
 }
 
 // Returns true if failed
-fn advance_board(board: &mut Board, s: &mut GameState) {
+fn advance_board(s: &mut GameState) {
     if s.failed {
         return;
     }
@@ -112,129 +110,52 @@ fn advance_board(board: &mut Board, s: &mut GameState) {
         return;
     }
 
-    let Coord {x: tail_x, y: tail_y } = s.snake.tail_pos();
-    board[tail_y][tail_x] = CellState::Empty;
+    s.board.pt(s.snake.tail_pos(), CellObject::None);
 
     // Advance snake
-    let hit_edge = s.snake.advance(s.powerup_strength != 0);
+    let hit_edge = s.snake.advance(s.invinc_time != 0);
     if hit_edge {
         println!("Hit edge! Failing.");
-        fail(board, s);
+        fail(s);
         return;
     }
-    update_embelishments(board, s);
 
     // Check what we hit
     let head_pos = s.snake.head_pos();
-    if head_pos == s.food {
-        println!("1 food gained. Score: {}", s.snake_len);
-        s.snake.add_food(1);
-        s.snake_len += 1;
-        while board.cell_at(s.food) == CellState::Filled {
-            if s.snake_len < MIN_LEN_FOR_FOOD_IN_SCOREBOARD {
-                s.food = Coord::rand_range(0..E_START, 0..B_HEIGHT);
-            } else {
-                s.food = Coord::rand();
-            }
-        }
-        board.pt(s.food);
-    } else if Some(head_pos) == s.powerup {
-        println!("Powerup gained for {} frames", POWERUP_RESET);
-        s.powerup_strength = POWERUP_RESET;
-        s.powerup = None;
-    } else {
-        match board.cell_at(head_pos) {
-            CellState::Empty => {}
-            CellState::Filled if s.powerup_strength != 0 => {}
-            CellState::Filled => {
-                println!("Hit filled cell! Failing.");
-                fail(board, s);
-                return;
-            }
-        }
-    }
+    // ...
 
     // Decrement powerup
-    if s.powerup_strength != 0 {
-        s.powerup_strength -= 1;
+    if s.invinc_time != 0 {
+        s.invinc_time -= 1;
     }
 
     // Decrement timer
     if s.timer == 0 {
         // Respawn the powerup
-        if let Some(powerup) = s.powerup {
-            board.pt_off(powerup);
-        }
-        let powerup = Coord::rand();
-        let radius = rand::thread_rng().gen_range(5..35);
 
-        board.circle(powerup, radius);
-        draw_scoreboard_border(board);
-        board.line_off((if radius < powerup.x { powerup.x - radius } else { 0 }, powerup.y), (powerup.x + radius, powerup.y));
-        board.pt(powerup);
+        // ...
 
-        s.powerup = Some(powerup);
-        s.powerup_freeze = POWERUP_FREEZE_RESET;
+        // s.powerup_freeze = POWERUP_FREEZE_RESET;
         s.timer = TIMER_RESET;
     } else {
         s.timer -= 1;
     }
 
-    board.pt(head_pos);
+    s.board.pt(head_pos, CellObject::Wall);
 }
 
-pub fn place_snake_and_food(board: &mut Board, snake: &Snake, food: impl Into<Coord>) {
+pub fn place_snake(board: &mut Board, snake: &Snake) {
     for ((c1, _), (c2, d2)) in snake.joints().iter().zip(snake.joints().iter().skip(1)) {
         let mut c2 = *c2;
         while c2 != *c1 {
-            let Coord { x, y } = c2;
-            board[y][x] = CellState::Filled;
+            board.pt(c2, CellObject::Wall);
             c2 = c2.add(*d2).expect("Couldn't place snake");
         }
-        let Coord { x, y } = c2;
-        board[y][x] = CellState::Filled;
+        board.pt(c2, CellObject::Wall);
     }
-    board.set_cell_at(food.into(), CellState::Filled);
 }
 
-fn fail(_board: &mut Board, s: &mut GameState) {
+fn fail(s: &mut GameState) {
     s.failed = true;
     println!("Failed");
 }
-
-const E_WIDTH: usize = 30;
-const E_START: usize = B_WIDTH - E_WIDTH;
-pub fn draw_embelishments(board: &mut Board) {
-    draw_scoreboard_border(board);
-
-    board.text("Snaek", (E_START + 5, 3));
-
-    board.text("Timer:", (E_START + 2, 10));
-
-    board.text("Head:", (E_START + 2, 27));
-    
-    board.text("Food:", (E_START + 2, 39));
-}
-
-pub fn update_embelishments(board: &mut Board, s: &GameState) {
-    // Timer
-    board.text(&format!("{}  ", s.timer), (E_START + 2, 16));
-    // Head
-    board.text(&format!("({},{}) ", s.snake.head_pos().x, s.snake.head_pos().y), (E_START + 2, 33));
-    // Food
-    board.text(&format!("({},{}) ", s.food.x, s.food.y), (E_START + 2, 45));
-    if s.powerup_strength == 0 {
-        // Length
-        board.text(&format!("Len:{} ", s.snake_len), (E_START + 2, 51));
-    } else {
-        // Powerup
-        board.text(&format!("PWR:{} ", s.powerup_strength), (E_START + 2, 51));
-    }
-}
-
-fn draw_scoreboard_border(board: &mut Board) {
-    board.line((E_START, 1), (E_START, B_HEIGHT - 2));
-    board.pt((E_START + 1, 0));
-    board.pt((E_START + 1, B_HEIGHT - 1));
-}
-

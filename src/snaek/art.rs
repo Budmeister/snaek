@@ -1,59 +1,80 @@
-use super::types::{Coord, Board, CellState, BoardExt};
+use super::types::{Coord, Board, CellState, CellFloor, CellObject};
 
 use crate::text::{GRIDS, C_WIDTH, CharGrid};
 
-pub trait BoardArtExt {
-    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>);
-    fn line_off(&mut self, from: impl Into<Coord>, to: impl Into<Coord>);
-    fn pt(&mut self, pt: impl Into<Coord>);
-    fn pt_off(&mut self, pt: impl Into<Coord>);
-    fn circle(&mut self, center: impl Into<Coord>, radius: usize);
-    fn circle_off(&mut self, center: impl Into<Coord>, radius: usize);
-    fn text(&mut self, text: &str, coord: impl Into<Coord>);
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
+enum Fill {
+    Floor(CellFloor),
+    Object(CellObject),
+    Both(CellState),
 }
-impl BoardArtExt for Board {
-    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>) {
-        line(self, from, to, CellState::Filled);
+impl From<CellFloor> for Fill {
+    fn from(value: CellFloor) -> Self {
+        Self::Floor(value)
+    }
+}
+impl From<CellObject> for Fill {
+    fn from(value: CellObject) -> Self {
+        Self::Object(value)
+    }
+}
+impl From<CellState> for Fill {
+    fn from(value: CellState) -> Self {
+        Self::Both(value)
+    }
+}
+impl CellState {
+    fn update(&mut self, fill: impl Into<Fill>) {
+        match fill.into() {
+            Fill::Floor(floor) => self.floor = floor,
+            Fill::Object(obj) => self.obj = obj,
+            Fill::Both(state) => *self = state,
+        }
+    }
+}
+
+pub trait BoardArt {
+    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>);
+    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>);
+    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>);
+    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>);
+}
+impl BoardArt for Board {
+    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+        line(self, from, to, fill);
     }
 
-    fn line_off(&mut self, from: impl Into<Coord>, to: impl Into<Coord>) {
-        line(self, from, to, CellState::Empty);
+    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>) {
+        let pt = pt.into();
+        if !pt.in_bounds() { return; }
+        self.cell_at_mut(pt).update(fill);
     }
 
-    fn pt(&mut self, pt: impl Into<Coord>) {
-        self.set_cell_at(pt, CellState::Filled);
+    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
+        circle(self, center, radius, fill);
     }
 
-    fn pt_off(&mut self, pt: impl Into<Coord>) {
-        self.set_cell_at(pt, CellState::Empty);
-    }
-
-    fn circle(&mut self, center: impl Into<Coord>, radius: usize) {
-        circle(self, center, radius, CellState::Filled);
-    }
-
-    fn circle_off(&mut self, center: impl Into<Coord>, radius: usize) {
-        circle(self, center, radius, CellState::Empty);
-    }
-
-    fn text(&mut self, text: &str, coord: impl Into<Coord>) {
+    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>) {
         let Coord { mut x, y } = coord.into();
+        let (fill, empty) = (fill.into(), empty.into());
+
         for mut letter in text.chars() {
             letter = letter.to_ascii_lowercase();
             if let Some(grid) = GRIDS.get(&letter) {
-                write_letter(grid, x, y, self);
+                write_letter(grid, x, y, self, fill, empty);
                 x += C_WIDTH + 1;
             }
         }
     }
 }
 
-fn write_letter(grid: &CharGrid, x: usize, y: usize, board: &mut Board) {
+fn write_letter(grid: &CharGrid, x: usize, y: usize, board: &mut Board, fill: impl Into<Fill>, empty: impl Into<Fill>) {
+    let (fill, empty) = (fill.into(), empty.into());
     for (dy, row) in grid.iter().enumerate() {
-        for (dx, fill) in row.iter().enumerate() {
-            board.set_cell_at((x + dx, y + dy), if *fill { CellState::Filled } else { CellState::Empty });
+        for (dx, should_fill) in row.iter().enumerate() {
+            board.pt((x + dx, y + dy), if *should_fill { fill } else { empty });
         }
-        board.set_cell_at((x + row.len(), y + dy), CellState::Empty);
+        board.pt((x + row.len(), y + dy), empty);
     }
 }
 
@@ -76,17 +97,20 @@ fn dist(from: Coord, to: Coord) -> usize {
     dist2.sqrt() as usize
 }
 
-fn line(board: &mut Board, from: impl Into<Coord>, to: impl Into<Coord>, fill: CellState) {
+fn line(board: &mut Board, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
     let (from, to) = (from.into(), to.into());
+    let fill = fill.into();
+    
     let n = dist(from, to) + 1;
     for i in 0..=n {
         let coord = lerp_coord(from, to, i, n);
-        board.set_cell_at(coord, fill);
+        board.pt(coord, fill);
     }
 }
 
-fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: CellState) {
+fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
     let center = center.into();
+    let fill = fill.into();
 
     let radius = radius as f64;
     let r2 = radius * radius;
@@ -103,10 +127,10 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: Cell
         // Q1
         let mut coord;
         coord = (center.x + x, center.y + y);
-        board.set_cell_at(coord, fill);
+        board.pt(coord, fill);
 
         coord = (center.x + y, center.y + x);
-        board.set_cell_at(coord, fill);
+        board.pt(coord, fill);
 
         // Q2
         // whether we can use `x` in Q2 horizontally
@@ -116,11 +140,11 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: Cell
 
         if q2x {
             coord = (center.x - x, center.y + y);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
         if q2y {
             coord = (center.x - y, center.y + x);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
 
         // Q4
@@ -131,11 +155,11 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: Cell
 
         if q4x {
             coord = (center.x + y, center.y - x);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
         if q4y {
             coord = (center.x + x, center.y - y);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
 
         // Q3
@@ -145,11 +169,11 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: Cell
         let q3y = q2y && q4x;
         if q3x {
             coord = (center.x - x, center.y - y);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
         if q3y {
             coord = (center.x - y, center.y - x);
-            board.set_cell_at(coord, fill);
+            board.pt(coord, fill);
         }
     }
 }

@@ -1,13 +1,13 @@
 [package]
-name = "snaek"
+name = "into_color"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+proc_macro = true
+
 [dependencies]
-piston_window = "*"
-rand = "*"
-once_cell = "*"
-hex = "*"
-into_color = { path = "into_color" }
+syn = "*"
+quote = "*"

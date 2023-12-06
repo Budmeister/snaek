@@ -4,10 +4,36 @@ use std::{collections::VecDeque, ops::Range};
 use rand::Rng;
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
-pub enum CellState {
+pub enum CellFloor {
     #[default]
     Empty,
-    Filled,
+    Water,
+    Lava,
+    Turf,
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
+pub enum CellObject {
+    #[default]
+    None,
+    Wall,
+    Food,
+    Seed,
+    Powerup(PowerupType),
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
+pub enum PowerupType {
+    Water,
+    Explosive,
+    Turf,
+    Invincibility,
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
+pub struct CellState {
+    pub floor: CellFloor,
+    pub obj: CellObject,
 }
 
 /// The width of the board in cells. Must be less than `isize::MAX`
@@ -15,33 +41,35 @@ pub const B_WIDTH: usize = 100;
 /// The height of the board in cells. Must be less than `isize::MAX`
 pub const B_HEIGHT: usize = 60;
 
-pub type Board = [[CellState; B_WIDTH]; B_HEIGHT];
-pub trait BoardExt {
-    fn new() -> Self;
-    fn cell_at(&self, coord: impl Into<Coord>) -> CellState;
-    fn cell_at_mut(&mut self, coord: impl Into<Coord>) -> &mut CellState;
+pub struct Board([[CellState; B_WIDTH]; B_HEIGHT]);
+impl Board {
+    pub fn new() -> Self {
+        Self([[CellState::default(); B_WIDTH]; B_HEIGHT])
+    }
+    pub fn cell_at(&self, coord: impl Into<Coord>) -> CellState {
+        let Coord { x, y } = coord.into();
+        self.0[y][x]
+    }
+    pub fn cell_at_mut(&mut self, coord: impl Into<Coord>) -> &mut CellState {
+        let Coord { x, y } = coord.into();
+        &mut self.0[y][x]
+    }
     /// This function does nothing if the given coord is out of bounds
-    fn set_cell_at(&mut self, coord: impl Into<Coord>, cell: CellState) {
+    pub fn set_cell_at(&mut self, coord: impl Into<Coord>, cell: CellState) {
         let coord = coord.into();
-        if coord.x >= B_WIDTH || coord.y >= B_HEIGHT {
+        if !coord.in_bounds() {
             return;
         }
         *self.cell_at_mut(coord) = cell;
     }
-}
-impl BoardExt for Board {
-    fn new() -> Self {
-        [[CellState::default(); B_WIDTH]; B_HEIGHT]
+    pub fn iter(&self) -> std::slice::Iter<[CellState; B_WIDTH]> {
+        self.0.iter()
     }
-    fn cell_at(&self, coord: impl Into<Coord>) -> CellState {
-        let Coord { x, y } = coord.into();
-        self[y][x]
-    }
-    fn cell_at_mut(&mut self, coord: impl Into<Coord>) -> &mut CellState {
-        let Coord { x, y } = coord.into();
-        &mut self[y][x]
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<[CellState; B_WIDTH]> {
+        self.0.iter_mut()
     }
 }
+
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub struct Coord {
@@ -100,6 +128,9 @@ impl Coord {
         let new_x = if new_x < 0 { B_WIDTH  - 1 } else if new_x as usize >= B_WIDTH  { 0 } else { new_x as usize };
         let new_y = if new_y < 0 { B_HEIGHT - 1 } else if new_y as usize >= B_HEIGHT { 0 } else { new_y as usize };
         Coord { x: new_x, y: new_y }
+    }
+    pub fn in_bounds(&self) -> bool {
+        self.x >= B_WIDTH || self.y >= B_HEIGHT
     }
 }
 impl From<(usize, usize)> for Coord {
@@ -209,14 +240,15 @@ impl Snake {
 }
 
 pub struct GameState {
+    pub board: Board,
     pub snake: Snake,
     pub snake_len: usize,
-    pub food: Coord,
-    pub powerup: Option<Coord>,
     pub timer: usize,
-    /// Time until powerup is gone
-    pub powerup_strength: usize,
+    /// Time in frames until invincibility is gone
+    pub invinc_time: usize,
     /// Freeze after a powerup spawns
     pub powerup_freeze: usize,
     pub failed: bool,
+    /// The frame number from logic's perspective
+    pub frame_num: usize,
 }

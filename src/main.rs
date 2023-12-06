@@ -29,11 +29,11 @@ fn start_classic(mut window: PistonWindow) {
 }
 
 fn start_snaek(mut window: PistonWindow) {
-    let (board, state) = snaek::logic::reset();
+    let state = snaek::logic::reset();
 
-    let board = Arc::new(RwLock::new(board));
+    let state = Arc::new(RwLock::new(state));
     let (tx, rx) = mpsc::channel();
-    snaek::logic::spawn_logic_thread(board.clone(), state, rx);
+    snaek::logic::spawn_logic_thread(state.clone(), rx);
 
-    snaek::draw::window_loop(&mut window, board, tx);
+    snaek::draw::window_loop(&mut window, state, tx);
 }
