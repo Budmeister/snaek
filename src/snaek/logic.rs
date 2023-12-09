@@ -7,8 +7,6 @@ use std::{
 
 use rand::Rng;
 
-use piston_window::Key;
-
 use super::{types::{Board, Dir, GameState, Snake, CellObject, CellState, CellFloor, PowerupType, Coord}, levels};
 
 use super::art::BoardArt;
@@ -64,7 +62,7 @@ fn next_level(s: &mut GameState) {
     s.failed = false;
 }
 
-pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<Key>) -> thread::JoinHandle<()> {
+pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -> thread::JoinHandle<()> {
 
     // Poll the Lazy
     crate::text::GRIDS.len();
@@ -88,59 +86,59 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<Key>) -> threa
 }
 
 // Returns true if Tx closed
-fn handle_keys(rx: &Receiver<Key>, s: &mut GameState) -> bool {
+fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
     match rx.try_recv() {
         Ok(key) => {
             match key {
-                Key::Up => {
+                UserAction::Up => {
                     if !s.failed && s.powerup_freeze == 0 {
                         s.snake.point(Dir::Up)
                     }
                 }
-                Key::Left => {
+                UserAction::Left => {
                     if !s.failed && s.powerup_freeze == 0 {
                         s.snake.point(Dir::Left)
                     }
                 }
-                Key::Down => {
+                UserAction::Down => {
                     if !s.failed && s.powerup_freeze == 0 {
                         s.snake.point(Dir::Down)
                     }
                 }
-                Key::Right => {
+                UserAction::Right => {
                     if !s.failed && s.powerup_freeze == 0 {
                         s.snake.point(Dir::Right)
                     }
                 }
-                Key::W => {
+                UserAction::Water => {
                     if s.water_pwrs != 0 {
                         s.water_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellFloor::Water);
                         println!("Used water powerup, {} remaining", s.water_pwrs);
                     }
                 }
-                Key::E => {
+                UserAction::Explosion => {
                     if s.explo_pwrs != 0 {
                         s.explo_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellState { floor: CellFloor::Empty, obj: CellObject::None });
                         println!("Used explosion powerup, {} remaining", s.explo_pwrs);
                     }
                 }
-                Key::R => {
+                UserAction::Turf => {
                     if s.turf_pwrs != 0 {
                         s.turf_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellFloor::Turf);
                         println!("Used turf powerup, {} remaining", s.turf_pwrs);
                     }
                 }
-                Key::D => {
+                UserAction::Seed => {
                     if s.seed_pwrs != 0 {
                         s.seed_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellObject::Seed);
                         println!("Used seed powerup, {} remaining", s.seed_pwrs);
                     }
                 }
-                Key::F => next_level(s),
+                UserAction::Restart => next_level(s),
                 _ => return false,
             };
         }
@@ -404,4 +402,18 @@ fn _place_debug(board: &mut Board) {
 fn fail(s: &mut GameState) {
     s.failed = true;
     println!("Failed. Press F to pay respects.");
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
+pub enum UserAction {
+    Up,
+    Left,
+    Down,
+    Right,
+    Water,
+    Explosion,
+    Turf,
+    Seed,
+    Shop,
+    Restart,
 }

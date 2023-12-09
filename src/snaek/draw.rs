@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock, mpsc::Sender};
 use into_color::as_color;
 use piston_window::{*, types::Color};
 
-use super::types::{B_WIDTH, CellState, CellFloor, CellObject, PowerupType, GameState};
+use super::{types::{B_WIDTH, CellState, CellFloor, CellObject, PowerupType, GameState}, logic::UserAction};
 
 use crate::global::W_WIDTH;
 
@@ -58,7 +58,7 @@ fn get_object_color(obj: CellObject) -> Color {
     }
 }
 
-pub fn window_loop(window: &mut PistonWindow, s: Arc<RwLock<GameState>>, tx: Sender<Key>) {
+pub fn window_loop(window: &mut PistonWindow, s: Arc<RwLock<GameState>>, tx: Sender<UserAction>) {
     let mut events = Events::new(EventSettings::new().ups(10).max_fps(60));
 
     while let Some(event) = events.next(window) {
@@ -76,15 +76,33 @@ pub fn window_loop(window: &mut PistonWindow, s: Arc<RwLock<GameState>>, tx: Sen
         }
 
         if let Some(Button::Keyboard(key)) = event.press_args() {
-            match tx.send(key) {
-                Ok(_) => (),
-                Err(err) => {
-                    println!("Couldn't send key press {:?} because of error: {}", key, err);
+            if let Some(action) = key_to_user_action(key) {
+                match tx.send(action) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        println!("Couldn't send key press {:?} because of error: {}", key, err);
+                    }
                 }
             }
         }
     }
 
+}
+
+fn key_to_user_action(key: Key) -> Option<UserAction> {
+    match key {
+        Key::Up => Some(UserAction::Up),
+        Key::Left => Some(UserAction::Left),
+        Key::Down => Some(UserAction::Down),
+        Key::Right => Some(UserAction::Right),
+        Key::W => Some(UserAction::Water),
+        Key::E => Some(UserAction::Explosion),
+        Key::R => Some(UserAction::Turf),
+        Key::D => Some(UserAction::Seed),
+        Key::F => Some(UserAction::Restart),
+        Key::S => Some(UserAction::Shop),
+        _ => None,
+    }
 }
 
 // Floor colors
