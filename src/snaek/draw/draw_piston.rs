@@ -4,7 +4,17 @@ use std::sync::{Arc, RwLock, mpsc::Sender};
 use into_color::as_color;
 use piston_window::{*, types::Color};
 
-use super::{types::{B_WIDTH, CellState, CellFloor, CellObject, PowerupType, GameState}, logic::UserAction};
+use super::super::{
+    types::{
+        B_WIDTH,
+        CellState,
+        CellFloor,
+        CellObject,
+        PowerupType,
+        GameState
+    },
+    logic::UserAction
+};
 
 use crate::global::W_WIDTH;
 
