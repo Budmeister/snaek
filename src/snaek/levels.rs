@@ -21,3 +21,5 @@ pub static LONELY_WORLD_LEVEL: &[u8] = include_bytes!("../../res/levels/lonely_w
 pub static WATER_V_LAVA_LEVEL: &[u8] = include_bytes!("../../res/levels/water_v_lava.bin");
 pub static THREE_BASINS_LEVEL: &[u8] = include_bytes!("../../res/levels/three_basins.bin");
 pub static HUMBLE_BEGINNINGS_LEVEL: &[u8] = include_bytes!("../../res/levels/humble_beginnings.bin");
+
+pub static SCORE_BANNER: &[u8] = include_bytes!("../../res/levels/score_banner.bin");

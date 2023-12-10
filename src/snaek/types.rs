@@ -3,6 +3,8 @@ use std::{collections::VecDeque, ops::Range};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
+use super::levels::SCORE_BANNER;
+
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
     #[default]
@@ -13,6 +15,7 @@ pub enum CellFloor {
     /// Holds distance from water
     Seed(usize),
     DeadSeed,
+    ExplIndicator,
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -62,13 +65,15 @@ pub struct CellState {
 /// The width of the board in cells. Must be less than `isize::MAX`
 pub const B_WIDTH: usize = 100;
 /// The height of the board in cells. Must be less than `isize::MAX`
-pub const B_HEIGHT: usize = 60;
+pub const B_HEIGHT: usize = 80;
+/// The height of the game area not including the score banner
+pub const G_HEIGHT: usize = 60;
 
-#[derive(Clone, Copy, Hash, PartialEq, Debug)]
-pub struct Board([[CellState; B_WIDTH]; B_HEIGHT]);
+#[derive(Clone, Hash, PartialEq, Debug)]
+pub struct Board(Box<[[CellState; B_WIDTH]; B_HEIGHT]>);
 impl Board {
     pub fn new() -> Self {
-        Self([[CellState::default(); B_WIDTH]; B_HEIGHT])
+        Self(Box::new([[CellState::default(); B_WIDTH]; B_HEIGHT]))
     }
     pub fn cell_at(&self, coord: impl Into<Coord>) -> CellState {
         let Coord { x, y } = coord.into();
@@ -114,7 +119,7 @@ impl Board {
             } // else, how??
         }
     }
-    pub fn surrounding_mut<'a, F>(&mut self, mut thing: F)
+    pub fn surrounding_mut<F>(&mut self, mut thing: F)
         where F: FnMut(&mut CellState, [&mut CellState; 8])
     {
         for y in 0..B_HEIGHT - 2 {
@@ -137,9 +142,9 @@ impl Board {
         }
     }
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut board = Board([[CellState::default(); B_WIDTH]; B_HEIGHT]);
+        let mut board = Board(Box::new([[CellState::default(); B_WIDTH]; B_HEIGHT]));
 
-        for (i, &byte) in bytes.iter().enumerate() {
+        for (i, &byte) in bytes.iter().chain(SCORE_BANNER.iter()).enumerate() {
             let x = i % B_WIDTH;
             let y = i / B_WIDTH;
 
@@ -151,6 +156,8 @@ impl Board {
                     0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None },
                     0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall },
                     0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border },
+                    0x6 => CellState { floor: CellFloor::Seed(0), obj: CellObject::None },
+                    0x7 => CellState { floor: CellFloor::ExplIndicator, obj: CellObject::None },
                     _ => CellState::default(),
                 };
             }
@@ -232,7 +239,7 @@ impl Distribution<Coord> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Coord {
         Coord {
             x: rng.gen_range(1..(B_WIDTH-1)),
-            y: rng.gen_range(1..(B_HEIGHT-1)),
+            y: rng.gen_range(1..(G_HEIGHT-1)),
         }
     }
 }

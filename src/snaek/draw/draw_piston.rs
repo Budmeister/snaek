@@ -48,6 +48,7 @@ fn get_floor_color(floor: CellFloor) -> Color {
         CellFloor::Turf => TURF_COLOR,
         CellFloor::Seed(_) => SEED_COLOR,
         CellFloor::DeadSeed => DEAD_SEED_COLOR,
+        CellFloor::ExplIndicator => EXPLOSIVE_COLOR,
     }
 }
 

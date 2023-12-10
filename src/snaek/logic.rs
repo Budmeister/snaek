@@ -7,7 +7,7 @@ use std::{
 
 use rand::Rng;
 
-use super::{types::{Board, Dir, GameState, Snake, CellObject, CellState, CellFloor, PowerupType, Coord, MAX_WATER_DIST}, levels};
+use super::{types::{Board, Dir, GameState, Snake, CellObject, CellState, CellFloor, PowerupType, Coord, MAX_WATER_DIST, G_HEIGHT}, levels};
 
 use super::art::BoardArt;
 
@@ -180,7 +180,7 @@ fn advance_board(s: &mut GameState) {
     s.board.pt(head_pos, CellObject::Wall);
 
     // Update all cells
-    let mut board_new = s.board; // Copy
+    let mut board_new = s.board.clone();
     // We can't zip on surrounding, because it's not an iterator
     // Save a copy of the refs
     let mut board_refs = Vec::new();
@@ -191,6 +191,8 @@ fn advance_board(s: &mut GameState) {
         random_tick(old_cell, old_surrounding, new_cell, new_surrounding);
     });
     s.board = board_new;
+
+    place_score_banner_details(s);
 
     // Decrement powerup
     if s.invinc_time != 0 {
@@ -270,9 +272,6 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
         _ => {}
     }
     match cell {
-        // Fail conditions - handled above
-        CellState { floor: CellFloor::Lava, .. } |
-        CellState { obj: CellObject::Wall | CellObject::Border, .. } => {}
         // Safe conditions
         CellState { floor: _, obj: CellObject::None | CellObject::Snake(_) } => {}
         CellState { floor: _, obj: CellObject::Food } => {
@@ -290,6 +289,9 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
                 PowerupType::Invincibility  => s.invinc_time = INVINC_TIME,
             }
         }
+        // Fail conditions - handled above - put last so that you can still get powerup on lava
+        CellState { floor: CellFloor::Lava, .. } |
+        CellState { obj: CellObject::Wall | CellObject::Border, .. } => {}
     }
     // Update counts
     match cell.floor {
@@ -298,7 +300,7 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
         CellFloor::Lava => s.lava_count += 1,
         CellFloor::Turf => s.turf_count += 1,
         CellFloor::Seed(_) => s.seed_count += 1,
-        CellFloor::DeadSeed => {},
+        CellFloor::DeadSeed | CellFloor::ExplIndicator => {},
     }
 }
 
@@ -316,13 +318,13 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                 CellState { floor: CellFloor::Seed(_) | CellFloor::DeadSeed, .. } => {
                     **spread_to = to_spread;
                 }
-                CellState { floor: CellFloor::Empty, obj: CellObject::None | CellObject::Powerup(_) | CellObject::Food } => {
+                CellState { floor: CellFloor::Empty | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(_) | CellObject::Food } => {
                     // 1/33 chance of spreading
                     if num < 30_000 {
                         **spread_to = to_spread;
                     }
                 }
-                CellState { floor: CellFloor::Empty, obj: CellObject::Wall } => {
+                CellState { floor: CellFloor::Empty | CellFloor::ExplIndicator, obj: CellObject::Wall } => {
                     // 1/100 chance of spreading
                     if num < 10_000 {
                         **spread_to = to_spread;
@@ -346,7 +348,7 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                         spread_to.update(to_spread);
                     }
                 }
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed, obj: CellObject::None | CellObject::Powerup(_) } => {
+                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(_) } => {
                     // 1/100 chance of spreading
                     if num < 5_000 {
                         spread_to.update(to_spread);
@@ -389,8 +391,8 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
             match spread_to {
                 CellState { obj: CellObject::Border, .. } => {}
                 CellState { floor: CellFloor::Turf | CellFloor::Water | CellFloor::Seed(_), .. } => {}
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed, obj: CellObject::Wall | CellObject::Snake(_) } => {}
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed, obj: CellObject::None | CellObject::Powerup(_) | CellObject::Food } => {
+                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::Wall | CellObject::Snake(_) } => {}
+                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(_) | CellObject::Food } => {
                     // 1/100 chance of spreading
                     if num < 5_000 {
                         **spread_to = to_spread;
@@ -426,6 +428,34 @@ pub fn place_snake(board: &mut Board, snake: &Snake) {
             snake_color = !snake_color;
         }
         board.pt(c2, CellObject::Snake(snake_color));
+    }
+}
+
+pub fn place_score_banner_details(s: &mut GameState) {
+    let pwr_details = [
+        (s.water_pwrs, CellState { floor: CellFloor::Water, obj: CellObject::None }),
+        (s.explo_pwrs, CellState { floor: CellFloor::ExplIndicator, obj: CellObject::None }),
+        (s.turf_pwrs, CellState { floor: CellFloor::Turf, obj: CellObject::None }),
+        (s.seed_pwrs, CellState { floor: CellFloor::Seed(0), obj: CellObject::None })
+    ];
+    let y = 13 + G_HEIGHT;
+    let empty = CellState { floor: CellFloor::Empty, obj: CellObject::None };
+
+    for (i, (pwr_count, fill)) in pwr_details.into_iter().enumerate() {
+        let x = 3 + 12 * i;
+        let mut count = 0;
+
+        for dy in 0..3 {
+            for dx in 0..5 {
+                let coord = (x + 2 * dx, y + 2 * dy);
+                if count < pwr_count {
+                    s.board.pt(coord, fill);
+                } else {
+                    s.board.pt(coord, empty);
+                }
+                count += 1;
+            }
+        }
     }
 }
 

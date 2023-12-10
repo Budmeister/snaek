@@ -52,6 +52,7 @@ fn get_floor_color(floor: CellFloor) -> Color {
         CellFloor::Turf => TURF_COLOR,
         CellFloor::Seed(dist) => SEED_COLORS[dist.min(MAX_WATER_DIST - 1)],
         CellFloor::DeadSeed => DEAD_SEED_COLOR,
+        CellFloor::ExplIndicator => EXPLOSIVE_COLOR,
     }
 }
 
@@ -144,14 +145,14 @@ fn key_to_user_action(keycode: Keycode) -> Option<UserAction> {
 type Color = (u8, u8, u8);
 
 // Floor colors
-const EMPTY_COLOR: Color = (0xff, 0xff, 0xff);
-const WATER_COLOR: Color = (0x3f, 0x38, 0xff);
-const LAVA_COLOR: Color = (0xfc, 0xb1, 0x03);
-const TURF_COLOR: Color = (0x94, 0xff, 0x8c);
+const EMPTY_COLOR: Color = (0xff, 0xff, 0xff); // #ffffff
+const WATER_COLOR: Color = (0x3f, 0x38, 0xff); // #3f38ff
+const LAVA_COLOR: Color = (0xfc, 0xb1, 0x03); // #fcb103
+const TURF_COLOR: Color = (0x94, 0xff, 0x8c); // #94ff8c
 
 // Object colors
-const WALL_COLOR: Color = (0x00, 0x00, 0x00);
-const FOOD_COLOR: Color = (0x11, 0xff, 0x00);
+const WALL_COLOR: Color = (0x00, 0x00, 0x00); // #000000
+const FOOD_COLOR: Color = (0x11, 0xff, 0x00); // #11ff00
 const SEED_COLOR: Color = (0x06, 0x5e, 0x00); // #065e00
 const SEED_COLORS: [Color; MAX_WATER_DIST] = [
     (0x2a, 0x5e, 0x00), // #2a5e00
@@ -164,10 +165,10 @@ const SEED_COLORS: [Color; MAX_WATER_DIST] = [
     (0x5e, 0x52, 0x00), // #5e5200
 ];
 const DEAD_SEED_COLOR: Color = (0x54, 0x2d, 0x1c); // #542d1c
-const BORDER_COLOR: Color = (0x42, 0x00, 0x5e);
-const SNAKE_COLOR_1: Color = (0xff, 0x60, 0x38);
-const SNAKE_COLOR_2: Color = (0x87, 0x1d, 0x03);
+const BORDER_COLOR: Color = (0x42, 0x00, 0x5e); // #42005e
+const SNAKE_COLOR_1: Color = (0xff, 0x60, 0x38); // #ff6038
+const SNAKE_COLOR_2: Color = (0x87, 0x1d, 0x03); // #871d03
 
 // Powerup colors
-const EXPLOSIVE_COLOR: Color = (0x69, 0x69, 0x69);
-const INVINC_COLOR: Color = (0x00, 0x00, 0x00);
+const EXPLOSIVE_COLOR: Color = (0x69, 0x69, 0x69); // #696969
+const INVINC_COLOR: Color = (0x00, 0x00, 0x00); // #000000

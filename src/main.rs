@@ -9,7 +9,6 @@ mod draw;
 mod classic;
 mod snaek;
 mod text;
-mod sdl_example;
 
 fn main() {
     // start_classic();
@@ -43,7 +42,7 @@ fn start_snaek_piston() {
 }
 
 fn start_snaek_sdl() {
-    let (mut canvas, sdl_context) = snaek::draw::draw_sdl2::create_window((global::W_WIDTH, global::W_HEIGHT));
+    let (mut canvas, sdl_context) = snaek::draw::draw_sdl2::create_window((global::W_WIDTH, 800));
 
     let state = snaek::logic::reset();
 
