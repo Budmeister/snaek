@@ -7,7 +7,7 @@ use std::{
 
 use rand::Rng;
 
-use super::{types::{Board, Dir, GameState, Snake, CellObject, CellState, CellFloor, PowerupType, Coord, MAX_WATER_DIST, G_HEIGHT}, levels};
+use super::{types::{Board, Dir, GameState, Snake, CellObject, CellState, CellFloor, PowerupType, Coord, MAX_WATER_DIST, G_HEIGHT, SnakeColor}, levels};
 
 use super::art::BoardArt;
 
@@ -18,8 +18,7 @@ pub const POWERUP_FREEZE_RESET: usize = 10;
 pub fn reset() -> GameState {
     println!("Level 1: {}", levels::LEVEL_NAMES[0]);
     let mut board = Board::from_bytes(levels::LEVELS[0]);
-    let snake = Snake::new((10, 5), Dir::Right, 5);
-    place_snake(&mut board, &snake);
+    let snake = Snake::new((5, 5), Dir::Right, 5);
 
     // _place_debug(&mut board);
 
@@ -27,8 +26,6 @@ pub fn reset() -> GameState {
         current_level: 0,
         board,
         snake,
-        snake_len: 5,
-        snake_color: false,
         timer: 0,
         invinc_time: 0,
         powerup_freeze: POWERUP_FREEZE_RESET,
@@ -53,9 +50,7 @@ fn next_level(s: &mut GameState) {
     }
     println!("Level {}: {}", s.current_level + 1, levels::LEVEL_NAMES[s.current_level]);
     s.board = Board::from_bytes(levels::LEVELS[s.current_level]);
-    let mut snake = Snake::new((10, 5), Dir::Right, 5);
-    snake.add_food(s.snake_len - 5);
-    place_snake(&mut s.board, &snake);
+    let snake = Snake::new((5, 5), Dir::Right, s.snake.len());
     
     s.snake = snake;
     s.timer = 0;
@@ -164,15 +159,8 @@ fn advance_board(s: &mut GameState) {
         return;
     }
 
-    s.board.pt(s.snake.tail_pos(), CellObject::None);
-
     // Advance snake
-    let hit_edge = s.snake.advance(s.invinc_time != 0);
-    if hit_edge {
-        println!("Hit edge! Failing.");
-        fail(s);
-        return;
-    }
+    s.snake.advance();
 
     // Check what we hit
     let head_pos = s.snake.head_pos();
@@ -225,8 +213,7 @@ fn advance_board(s: &mut GameState) {
     }
     s.frame_num += 1;
 
-    s.board.pt(head_pos, CellObject::Snake(s.snake_color));
-    s.snake_color = !s.snake_color;
+    s.board.pt(head_pos, CellObject::Snake(super::types::SnakeColor::Head, s.snake.len()));
 }
 
 fn choose_powerup_type(s: &GameState) -> PowerupType {
@@ -273,13 +260,12 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
     }
     match cell {
         // Safe conditions
-        CellState { floor: _, obj: CellObject::None | CellObject::Snake(_) } => {}
-        CellState { floor: _, obj: CellObject::Food } => {
-            s.snake_len += 1;
-            println!("Ate food. Score: {}", s.snake_len);
+        CellState { obj: CellObject::None | CellObject::Snake(_, _), .. } => {}
+        CellState { obj: CellObject::Food, .. } => {
+            println!("Ate food. Score: {}", s.snake.len());
             s.snake.add_food(1);
         }
-        CellState { floor: _, obj: CellObject::Powerup(pwr) } => {
+        CellState { obj: CellObject::Powerup(pwr), .. } => {
             println!("Got powerup: {:?}", pwr);
             match pwr {
                 PowerupType::Water          => s.water_pwrs += 1,
@@ -307,13 +293,14 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
 pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mut CellState, mut surrounding_new: [&mut CellState; 8]) {
     let num = rand::thread_rng().gen_range(0..1_000_000);
     let i = rand::thread_rng().gen_range(0..8);
-    match cell {
-        CellState { floor: CellFloor::Lava, obj: _ } => {
+    match cell.floor {
+        CellFloor::Turf | CellFloor::DeadSeed | CellFloor::ExplIndicator => {}
+        CellFloor::Lava => {
             // Spread Lava
             let to_spread = CellState { floor: CellFloor::Lava, obj: CellObject::None };
             let spread_to = &mut surrounding_new[i];
             match spread_to {
-                CellState { obj: CellObject::Border | CellObject::Snake(_), .. } => {}
+                CellState { obj: CellObject::Border | CellObject::Snake(_, _), .. } => {}
                 CellState { floor: CellFloor::Turf | CellFloor::Lava, .. } => {}
                 CellState { floor: CellFloor::Seed(_) | CellFloor::DeadSeed, .. } => {
                     **spread_to = to_spread;
@@ -335,12 +322,12 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                 }
             }
         }
-        CellState { floor: CellFloor::Seed(dist), .. } => {
+        CellFloor::Seed(dist) => {
             // Spread seed
-            let to_spread = CellFloor::Seed(*dist + 1);
+            let to_spread = CellFloor::Seed(dist + 1);
             let spread_to = &mut surrounding_new[i];
             match spread_to {
-                CellState { obj: CellObject::Border | CellObject::Wall | CellObject::Food | CellObject::Snake(_), .. } => {}
+                CellState { obj: CellObject::Border | CellObject::Wall | CellObject::Food | CellObject::Snake(_, _), .. } => {}
                 CellState { floor: CellFloor::Turf | CellFloor::Lava | CellFloor::Seed(_), ..} => {}
                 CellState { floor: CellFloor::Water, obj: CellObject::None | CellObject::Powerup(_) } => {
                     // 1/50 chance of spreading
@@ -370,7 +357,7 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                 *dist_new_ = dist_new;
             }
             // Still calculate the effects as if it is a seed regardless
-            if !matches!(cell.obj, CellObject::Border | CellObject::Snake(_)) {
+            if !matches!(cell.obj, CellObject::Border | CellObject::Snake(_, _)) {
                 let num = rand::thread_rng().gen_range(0..1_000_000);
                 // 1/1000 chance to spawn food or die
                 if num < 1_000 {
@@ -384,14 +371,14 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                 }
             }
         }
-        CellState { floor: CellFloor::Water, obj: _ } => {
+        CellFloor::Water => {
             // Spread water
             let to_spread = CellState { floor: CellFloor::Water, obj: CellObject::None };
             let spread_to = &mut surrounding_new[i];
             match spread_to {
                 CellState { obj: CellObject::Border, .. } => {}
                 CellState { floor: CellFloor::Turf | CellFloor::Water | CellFloor::Seed(_), .. } => {}
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::Wall | CellObject::Snake(_) } => {}
+                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::Wall | CellObject::Snake(_, _) } => {}
                 CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(_) | CellObject::Food } => {
                     // 1/100 chance of spreading
                     if num < 5_000 {
@@ -403,31 +390,33 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
                 }
             }
         }
-        CellState { floor: CellFloor::Empty, obj: CellObject::None } => {
-            // Spontaneously generate
-            // 1/10_000
-            if num < 1 {
-                if i < 4 {
-                    *cell_new = CellState { floor: CellFloor::Water, obj: CellObject::None };
-                } else {
-                    *cell_new = CellState { floor: CellFloor::Lava, obj: CellObject::None };
+        CellFloor::Empty => {
+            if cell.obj == CellObject::None {
+                // Spontaneously generate
+                // 1/10_000
+                if num < 1 {
+                    if i < 4 {
+                        *cell_new = CellState { floor: CellFloor::Water, obj: CellObject::None };
+                    } else {
+                        *cell_new = CellState { floor: CellFloor::Lava, obj: CellObject::None };
+                    }
                 }
             }
         }
-        _ => {}
     }
-}
-
-pub fn place_snake(board: &mut Board, snake: &Snake) {
-    let mut snake_color = true;
-    for ((c1, _), (c2, d2)) in snake.joints().iter().zip(snake.joints().iter().skip(1)) {
-        let mut c2 = *c2;
-        while c2 != *c1 {
-            board.pt(c2, CellObject::Snake(snake_color));
-            c2 = c2.add(*d2).expect("Couldn't place snake");
-            snake_color = !snake_color;
+    match cell.obj {
+        CellObject::Snake(snake_color, life) => {
+            if life == 0 {
+                cell_new.update(CellObject::None);
+                return;
+            }
+            let new_snake_color = match snake_color {
+                SnakeColor::Head | SnakeColor::LightRed => SnakeColor::DarkRed,
+                SnakeColor::DarkRed => SnakeColor::LightRed,
+            };
+            cell_new.update(CellObject::Snake(new_snake_color, life - 1));
         }
-        board.pt(c2, CellObject::Snake(snake_color));
+        _ => {}
     }
 }
 

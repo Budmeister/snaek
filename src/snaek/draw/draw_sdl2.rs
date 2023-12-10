@@ -10,7 +10,8 @@ use super::super::{
         CellFloor,
         CellObject,
         PowerupType,
-        GameState
+        GameState,
+        SnakeColor,
     },
     logic::UserAction
 };
@@ -40,7 +41,7 @@ fn get_cell_color(cell: CellState, s: &GameState) -> Color {
     if cell.obj == CellObject::None || (cell.obj.is_powerup() && s.frame_num % 2 == 0) {
         get_floor_color(cell.floor)
     } else {
-        get_object_color(cell.obj)
+        get_object_color(cell.obj, s)
     }
 }
 
@@ -56,12 +57,13 @@ fn get_floor_color(floor: CellFloor) -> Color {
     }
 }
 
-fn get_object_color(obj: CellObject) -> Color {
+fn get_object_color(obj: CellObject, s: &GameState) -> Color {
     match obj {
         CellObject::None => EMPTY_COLOR,
         CellObject::Wall => WALL_COLOR,
-        CellObject::Snake(true) => SNAKE_COLOR_1,
-        CellObject::Snake(false) => SNAKE_COLOR_2,
+        CellObject::Snake(SnakeColor::DarkRed, _) => SNAKE_COLOR_DARK_RED,
+        CellObject::Snake(SnakeColor::LightRed, _) => SNAKE_COLOR_LIGHT_RED,
+        CellObject::Snake(SnakeColor::Head, _) => if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD },
         CellObject::Food => FOOD_COLOR,
         CellObject::Powerup(pwr) => match pwr {
             PowerupType::Water => WATER_COLOR,
@@ -166,8 +168,10 @@ const SEED_COLORS: [Color; MAX_WATER_DIST] = [
 ];
 const DEAD_SEED_COLOR: Color = (0x54, 0x2d, 0x1c); // #542d1c
 const BORDER_COLOR: Color = (0x42, 0x00, 0x5e); // #42005e
-const SNAKE_COLOR_1: Color = (0xff, 0x60, 0x38); // #ff6038
-const SNAKE_COLOR_2: Color = (0x87, 0x1d, 0x03); // #871d03
+const SNAKE_COLOR_LIGHT_RED: Color = (0xff, 0x60, 0x38); // #ff6038
+const SNAKE_COLOR_DARK_RED: Color = (0x87, 0x1d, 0x03); // #871d03
+const SNAKE_COLOR_HEAD: Color = (0xeb, 0x9b, 0x2d); // #eb9b2d
+const SNAKE_COLOR_HEAD_WITH_INVINC: Color = (0xf8, 0xff, 0xbd); // #f8ffbd
 
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = (0x69, 0x69, 0x69); // #696969

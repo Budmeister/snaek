@@ -23,7 +23,7 @@ pub enum CellObject {
     #[default]
     None,
     Wall,
-    Snake(bool),
+    Snake(SnakeColor, usize),
     Food,
     Powerup(PowerupType),
     Border,
@@ -52,6 +52,13 @@ impl Distribution<PowerupType> for Standard {
             _ => PowerupType::Seed,
         }
     }
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
+pub enum SnakeColor {
+    DarkRed,
+    LightRed,
+    Head,
 }
 
 pub const MAX_WATER_DIST: usize = 8;
@@ -272,85 +279,30 @@ impl Distribution<Dir> for Standard {
 
 #[derive(Debug)]
 pub struct Snake {
-    joints: Joints,
-    food_to_add: usize,
+    head: Coord,
+    dir: Dir,
+    len: usize,
 }
 impl Snake {
-    pub fn new<C: Into<Coord>>(head: C, dir: Dir, len: usize) -> Snake {
-        let head = head.into();
-        let mut tail = head;
-        for _ in 0..len {
-            tail = tail.sub_wrapped(dir);
-        }
-        let mut joints = VecDeque::new();
-        joints.push_back((head, dir));
-        joints.push_back((tail, dir));
+    pub fn new(head: impl Into<Coord>, dir: Dir, len: usize) -> Snake {
         Snake {
-            joints,
-            food_to_add: 0,
+            head: head.into(), dir, len
         }
     }
-
-    pub fn point(&mut self, dir: Dir) {
-        let front_dir = &mut self.joints.front_mut().unwrap().1;
-        if !front_dir.is_opposite(dir) {
-            *front_dir = dir;
-            self.joints.push_front((self.head_pos(), dir));
-        }
+    pub fn advance(&mut self) {
+        self.head = self.head.add_wrapped(self.dir);
     }
-
-    /// Returns true if we ran into a wall
-    pub fn advance(&mut self, wrap: bool) -> bool {
-        if self.joints.is_empty() {
-            panic!("Cannot advance a snake if it is empty");
-        }
-
-        let head = self.joints.front_mut().unwrap();
-        if wrap {
-            head.0 = head.0.add_wrapped(head.1);
-        } else {
-            let new_head = head.0.add(head.1);
-            if let Some(new_head) = new_head {
-                head.0 = new_head;
-            } else {
-                return true;
-            }
-        }
-
-        // Advance the tail unless we ate some food
-        if self.food_to_add == 0 {
-            let tail = self.joints.back_mut().unwrap();
-            tail.0 = tail.0.add_wrapped(tail.1);
-            let tail_pos = self.tail_pos();
-            let second_last = {
-                let mut iter = self.joints.iter().rev();
-                iter.next();
-                iter.next().unwrap() // joints always has at least two items: a head and a tail
-            };
-            if tail_pos == second_last.0 {
-                self.joints.pop_back();
-            }
-        } else {
-            self.food_to_add -= 1;
-        }
-
-        false
-    }
-
     pub fn add_food(&mut self, food: usize) {
-        self.food_to_add += food;
+        self.len += food;
     }
-
+    pub fn point(&mut self, dir: Dir) {
+        self.dir = dir;
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
     pub fn head_pos(&self) -> Coord {
-        self.joints.front().unwrap().0
-    }
-
-    pub fn tail_pos(&self) -> Coord {
-        self.joints.back().unwrap().0
-    }
-
-    pub fn joints(&self) -> &Joints {
-        &self.joints
+        self.head
     }
 }
 
@@ -358,9 +310,6 @@ pub struct GameState {
     pub current_level: usize,
     pub board: Board,
     pub snake: Snake,
-    pub snake_len: usize,
-    /// The color the next head will have
-    pub snake_color: bool,
     pub timer: usize,
     /// Time in frames until invincibility is gone
     pub invinc_time: usize,

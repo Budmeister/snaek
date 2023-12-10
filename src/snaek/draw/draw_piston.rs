@@ -11,7 +11,8 @@ use super::super::{
         CellFloor,
         CellObject,
         PowerupType,
-        GameState
+        GameState,
+        SnakeColor,
     },
     logic::UserAction
 };
@@ -56,8 +57,9 @@ fn get_object_color(obj: CellObject) -> Color {
     match obj {
         CellObject::None => EMPTY_COLOR,
         CellObject::Wall => WALL_COLOR,
-        CellObject::Snake(true) => SNAKE_COLOR_1,
-        CellObject::Snake(false) => SNAKE_COLOR_2,
+        CellObject::Snake(SnakeColor::DarkRed, _) => SNAKE_COLOR_DARK_RED,
+        CellObject::Snake(SnakeColor::LightRed, _) => SNAKE_COLOR_LIGHT_RED,
+        CellObject::Snake(SnakeColor::Head, _) => SNAKE_COLOR_HEAD,
         CellObject::Food => FOOD_COLOR,
         CellObject::Powerup(pwr) => match pwr {
             PowerupType::Water => WATER_COLOR,
@@ -129,8 +131,9 @@ const FOOD_COLOR: Color = as_color!("#11ff00");
 const SEED_COLOR: Color = as_color!("#065e00");
 const DEAD_SEED_COLOR: Color = as_color!("#473636");
 const BORDER_COLOR: Color = as_color!("#42005e");
-const SNAKE_COLOR_1: Color = as_color!("#ff6038");
-const SNAKE_COLOR_2: Color = as_color!("#871d03");
+const SNAKE_COLOR_LIGHT_RED: Color = as_color!("#ff6038");
+const SNAKE_COLOR_DARK_RED: Color = as_color!("#871d03");
+const SNAKE_COLOR_HEAD: Color = as_color!("#b9c900");
 
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
