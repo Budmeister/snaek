@@ -46,6 +46,8 @@ fn get_floor_color(floor: CellFloor) -> Color {
         CellFloor::Water => WATER_COLOR,
         CellFloor::Lava => LAVA_COLOR,
         CellFloor::Turf => TURF_COLOR,
+        CellFloor::Seed(_) => SEED_COLOR,
+        CellFloor::DeadSeed => DEAD_SEED_COLOR,
     }
 }
 
@@ -56,7 +58,6 @@ fn get_object_color(obj: CellObject) -> Color {
         CellObject::Snake(true) => SNAKE_COLOR_1,
         CellObject::Snake(false) => SNAKE_COLOR_2,
         CellObject::Food => FOOD_COLOR,
-        CellObject::Seed => SEED_COLOR,
         CellObject::Powerup(pwr) => match pwr {
             PowerupType::Water => WATER_COLOR,
             PowerupType::Explosive => EXPLOSIVE_COLOR,
@@ -125,6 +126,7 @@ const TURF_COLOR: Color = as_color!("#94ff8c");
 const WALL_COLOR: Color = as_color!("#000000");
 const FOOD_COLOR: Color = as_color!("#11ff00");
 const SEED_COLOR: Color = as_color!("#065e00");
+const DEAD_SEED_COLOR: Color = as_color!("#473636");
 const BORDER_COLOR: Color = as_color!("#42005e");
 const SNAKE_COLOR_1: Color = as_color!("#ff6038");
 const SNAKE_COLOR_2: Color = as_color!("#871d03");

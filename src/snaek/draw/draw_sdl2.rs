@@ -15,7 +15,7 @@ use super::super::{
     logic::UserAction
 };
 
-use crate::global::W_WIDTH;
+use crate::{global::W_WIDTH, snaek::types::MAX_WATER_DIST};
 
 /// The width of a single cell in pixels
 const C_SIZE: usize = W_WIDTH as usize / B_WIDTH;
@@ -50,6 +50,8 @@ fn get_floor_color(floor: CellFloor) -> Color {
         CellFloor::Water => WATER_COLOR,
         CellFloor::Lava => LAVA_COLOR,
         CellFloor::Turf => TURF_COLOR,
+        CellFloor::Seed(dist) => SEED_COLORS[dist.min(MAX_WATER_DIST - 1)],
+        CellFloor::DeadSeed => DEAD_SEED_COLOR,
     }
 }
 
@@ -60,7 +62,6 @@ fn get_object_color(obj: CellObject) -> Color {
         CellObject::Snake(true) => SNAKE_COLOR_1,
         CellObject::Snake(false) => SNAKE_COLOR_2,
         CellObject::Food => FOOD_COLOR,
-        CellObject::Seed => SEED_COLOR,
         CellObject::Powerup(pwr) => match pwr {
             PowerupType::Water => WATER_COLOR,
             PowerupType::Explosive => EXPLOSIVE_COLOR,
@@ -151,7 +152,18 @@ const TURF_COLOR: Color = (0x94, 0xff, 0x8c);
 // Object colors
 const WALL_COLOR: Color = (0x00, 0x00, 0x00);
 const FOOD_COLOR: Color = (0x11, 0xff, 0x00);
-const SEED_COLOR: Color = (0x06, 0x5e, 0x00);
+const SEED_COLOR: Color = (0x06, 0x5e, 0x00); // #065e00
+const SEED_COLORS: [Color; MAX_WATER_DIST] = [
+    (0x2a, 0x5e, 0x00), // #2a5e00
+    (0x2a, 0x59, 0x04), // #2a5904
+    (0x3a, 0x59, 0x04), // #3a5904
+    (0x45, 0x59, 0x04), // #455904
+    (0x59, 0x59, 0x04), // #595904
+    (0x59, 0x54, 0x0b), // #59540b
+    (0x59, 0x4e, 0x04), // #594e04
+    (0x5e, 0x52, 0x00), // #5e5200
+];
+const DEAD_SEED_COLOR: Color = (0x54, 0x2d, 0x1c); // #542d1c
 const BORDER_COLOR: Color = (0x42, 0x00, 0x5e);
 const SNAKE_COLOR_1: Color = (0xff, 0x60, 0x38);
 const SNAKE_COLOR_2: Color = (0x87, 0x1d, 0x03);

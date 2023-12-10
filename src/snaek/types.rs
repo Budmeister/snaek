@@ -10,6 +10,9 @@ pub enum CellFloor {
     Water,
     Lava,
     Turf,
+    /// Holds distance from water
+    Seed(usize),
+    DeadSeed,
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -19,7 +22,6 @@ pub enum CellObject {
     Wall,
     Snake(bool),
     Food,
-    Seed,
     Powerup(PowerupType),
     Border,
 }
@@ -49,6 +51,8 @@ impl Distribution<PowerupType> for Standard {
     }
 }
 
+pub const MAX_WATER_DIST: usize = 8;
+
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub struct CellState {
     pub floor: CellFloor,
@@ -60,6 +64,7 @@ pub const B_WIDTH: usize = 100;
 /// The height of the board in cells. Must be less than `isize::MAX`
 pub const B_HEIGHT: usize = 60;
 
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub struct Board([[CellState; B_WIDTH]; B_HEIGHT]);
 impl Board {
     pub fn new() -> Self {
@@ -87,22 +92,38 @@ impl Board {
     pub fn iter_mut(&mut self) -> std::slice::IterMut<[CellState; B_WIDTH]> {
         self.0.iter_mut()
     }
-    pub fn surrounding_mut<F>(&mut self, thing: F)
-        where F: Fn(&mut CellState, [&mut CellState; 8])
+    pub fn surrounding<'a, F>(&'a self, mut thing: F)
+        where F: FnMut(&'a CellState, [&'a CellState; 8])
     {
         for y in 0..B_HEIGHT - 2 {
-            let (_, rest) = self.0.split_at_mut(y);
-            let (rows, _) = rest.split_at_mut(3);
+            let rows = &self.0[y..y+3];
             if let [top, middle, bottom] = rows {
                 for x in 0..B_WIDTH - 2 {
-                    let (_, rest) = top.split_at_mut(x);
-                    let (top, _) = rest.split_at_mut(3);
+                    let top = &top[x..x+3];
+                    let middle = &middle[x..x+3];
+                    let bottom = &bottom[x..x+3];
 
-                    let (_, rest) = middle.split_at_mut(x);
-                    let (middle, _) = rest.split_at_mut(3);
-
-                    let (_, rest) = bottom.split_at_mut(x);
-                    let (bottom, _) = rest.split_at_mut(3);
+                    if let (
+                        [c1, c2, c3],
+                        [c4, c5, c6],
+                        [c7, c8, c9]
+                    ) = (top, middle, bottom) {
+                        thing(c5, [c1, c2, c3, c4, c6, c7, c8, c9]);
+                    } // else, how??
+                }
+            } // else, how??
+        }
+    }
+    pub fn surrounding_mut<'a, F>(&mut self, mut thing: F)
+        where F: FnMut(&mut CellState, [&mut CellState; 8])
+    {
+        for y in 0..B_HEIGHT - 2 {
+            let rows = &mut self.0[y..y+3];
+            if let [top, middle, bottom] = rows {
+                for x in 0..B_WIDTH - 2 {
+                    let top = &mut top[x..x+3];
+                    let middle = &mut middle[x..x+3];
+                    let bottom = &mut bottom[x..x+3];
 
                     if let (
                         [c1, c2, c3],
@@ -351,4 +372,5 @@ pub struct GameState {
     pub water_count: usize,
     pub lava_count: usize,
     pub turf_count: usize,
+    pub seed_count: usize,
 }
