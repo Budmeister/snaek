@@ -421,6 +421,7 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
 }
 
 pub fn place_score_banner_details(s: &mut GameState) {
+    // Place powerups
     let pwr_details = [
         (s.water_pwrs, CellState { floor: CellFloor::Water, obj: CellObject::None }),
         (s.explo_pwrs, CellState { floor: CellFloor::ExplIndicator, obj: CellObject::None }),
@@ -446,6 +447,30 @@ pub fn place_score_banner_details(s: &mut GameState) {
             }
         }
     }
+
+    // Place score and invincibility powerup
+    let x = 63;
+    let turf = CellState { floor: CellFloor::Turf, obj: CellObject::None };
+    let wall = CellState { floor: CellFloor::Empty, obj: CellObject::Wall };
+
+    let y = 4 + G_HEIGHT;
+    let score = s.snake.len();
+    let score_str = score.to_string();
+    s.board.text(&score_str, (x, y), turf, wall);
+
+    let y = 11 + G_HEIGHT;
+    let invinc = s.invinc_time;
+    let invinc_str = format!("{}{}", invinc,
+        if invinc < 10 {
+            "  "
+        } else if invinc < 100 {
+            " "
+        } else {
+            ""
+        }
+    );
+    s.board.text(&invinc_str, (x, y), turf, wall);
+
 }
 
 fn _place_debug(board: &mut Board) {
