@@ -17,7 +17,7 @@ pub const POWERUP_FREEZE_RESET: usize = 10;
 
 pub fn reset() -> GameState {
     println!("Level 1: {}", levels::LEVEL_NAMES[0]);
-    let mut board = Board::from_bytes(levels::LEVELS[0]);
+    let board = Board::from_bytes(levels::LEVELS[0]);
     let snake = Snake::new((5, 5), Dir::Right, 5);
 
     // _place_debug(&mut board);
@@ -512,4 +512,5 @@ pub enum UserAction {
     Seed,
     Shop,
     Restart,
+    Quit,
 }

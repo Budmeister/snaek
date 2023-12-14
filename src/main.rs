@@ -3,6 +3,7 @@
 use std::sync::{Arc, RwLock, mpsc};
 
 use draw::create_window;
+use snaek::draw::Frontend;
 
 mod global;
 mod draw;
@@ -13,7 +14,7 @@ mod text;
 fn main() {
     // start_classic();
     // start_snaek_piston();
-    start_snaek_sdl();
+    start_snaek::<snaek::draw::Sdl2Frontend>();
 }
 
 
@@ -29,8 +30,8 @@ fn start_classic() {
     classic::draw::window_loop(&mut window, board, tx);
 }
 
-fn start_snaek_piston() {
-    let mut window = create_window((global::W_WIDTH, global::W_HEIGHT));
+fn start_snaek<F: Frontend>() {
+    let f = F::new((global::W_WIDTH, 800));
 
     let state = snaek::logic::reset();
 
@@ -38,17 +39,5 @@ fn start_snaek_piston() {
     let (tx, rx) = mpsc::channel();
     snaek::logic::spawn_logic_thread(state.clone(), rx);
 
-    snaek::draw::draw_piston::window_loop(&mut window, state, tx);
-}
-
-fn start_snaek_sdl() {
-    let (mut canvas, sdl_context) = snaek::draw::draw_sdl2::create_window((global::W_WIDTH, 800));
-
-    let state = snaek::logic::reset();
-
-    let state = Arc::new(RwLock::new(state));
-    let (tx, rx) = mpsc::channel();
-    snaek::logic::spawn_logic_thread(state.clone(), rx);
-
-    snaek::draw::draw_sdl2::window_loop(&mut canvas, &sdl_context, state, tx);
+    snaek::draw::window_loop(f, state, tx);
 }

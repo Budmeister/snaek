@@ -18,20 +18,12 @@ pub fn as_color(input: TokenStream) -> TokenStream {
     let r = u8::from_str_radix(&color_str[1..3], 16).expect("Unable to parse hex");
     let g = u8::from_str_radix(&color_str[3..5], 16).expect("Unable to parse hex");
     let b = u8::from_str_radix(&color_str[5..7], 16).expect("Unable to parse hex");
-    let a = if color_str.len() == 9 {
+    let _a = if color_str.len() == 9 {
         u8::from_str_radix(&color_str[7..9], 16).unwrap()
     } else {
         u8::MAX
     };
 
-    // Convert to f32 and normalize
-    let (r, g, b, a) = (
-        r as f32 / u8::MAX as f32,
-        g as f32 / u8::MAX as f32,
-        b as f32 / u8::MAX as f32,
-        a as f32 / u8::MAX as f32,
-    );
-
     // Output the generated const
-    quote! { [#r, #g, #b, #a] }.into()
+    quote! { (#r, #g, #b) }.into()
 }
