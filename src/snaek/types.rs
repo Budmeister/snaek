@@ -1,5 +1,5 @@
 
-use std::{collections::VecDeque, ops::Range};
+use std::ops::{Range, Deref};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
@@ -70,18 +70,17 @@ pub struct CellState {
 }
 
 /// The width of the board in cells. Must be less than `isize::MAX`
-pub const B_WIDTH: usize = 100;
+pub const B_WIDTH: usize = 200;
 /// The height of the board in cells. Must be less than `isize::MAX`
-pub const B_HEIGHT: usize = 80;
+pub const B_HEIGHT: usize = 160;
 /// The height of the game area not including the score banner
 pub const G_HEIGHT: usize = 60;
 
+type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
+
 #[derive(Clone, Hash, PartialEq, Debug)]
-pub struct Board(Box<[[CellState; B_WIDTH]; B_HEIGHT]>);
+pub struct Board(Box<BoardArray<B_WIDTH, B_HEIGHT>>);
 impl Board {
-    pub fn new() -> Self {
-        Self(Box::new([[CellState::default(); B_WIDTH]; B_HEIGHT]))
-    }
     pub fn cell_at(&self, coord: impl Into<Coord>) -> CellState {
         let Coord { x, y } = coord.into();
         self.0[y][x]
@@ -89,20 +88,6 @@ impl Board {
     pub fn cell_at_mut(&mut self, coord: impl Into<Coord>) -> &mut CellState {
         let Coord { x, y } = coord.into();
         &mut self.0[y][x]
-    }
-    /// This function does nothing if the given coord is out of bounds
-    pub fn set_cell_at(&mut self, coord: impl Into<Coord>, cell: CellState) {
-        let coord = coord.into();
-        if !coord.in_bounds() {
-            return;
-        }
-        *self.cell_at_mut(coord) = cell;
-    }
-    pub fn iter(&self) -> std::slice::Iter<[CellState; B_WIDTH]> {
-        self.0.iter()
-    }
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<[CellState; B_WIDTH]> {
-        self.0.iter_mut()
     }
     pub fn surrounding<'a, F>(&'a self, mut thing: F)
         where F: FnMut(&'a CellState, [&'a CellState; 8])
@@ -149,14 +134,16 @@ impl Board {
         }
     }
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut board = Board(Box::new([[CellState::default(); B_WIDTH]; B_HEIGHT]));
+        let mut board_vec: Vec<Vec<CellState>> = (0..B_HEIGHT)
+            .map(|_| vec![CellState::default(); B_WIDTH])
+            .collect();
 
         for (i, &byte) in bytes.iter().chain(SCORE_BANNER.iter()).enumerate() {
             let x = i % B_WIDTH;
             let y = i / B_WIDTH;
 
             if y < B_HEIGHT {
-                board.0[y][x] = match byte {
+                board_vec[y][x] = match byte {
                     0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None },
                     0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None },
                     0x2 => CellState { floor: CellFloor::Lava, obj: CellObject::None },
@@ -170,7 +157,25 @@ impl Board {
             }
         }
 
-        board
+        let board: Box<BoardArray<B_WIDTH, B_HEIGHT>> = board_vec
+            .into_iter()
+            .map(|row| {
+                let boxed_row: Box<[CellState; B_WIDTH]> = row.into_boxed_slice().try_into().expect("Row had incorrect length");
+                *boxed_row
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+            .try_into()
+            .expect("Board had incorrect height");
+
+        Board(board)
+    }
+}
+impl Deref for Board {
+    type Target = BoardArray<B_WIDTH, B_HEIGHT>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -250,9 +255,6 @@ impl Distribution<Coord> for Standard {
         }
     }
 }
-
-// front is head, back is tail
-pub type Joints = VecDeque<(Coord, Dir)>;
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub enum Dir {

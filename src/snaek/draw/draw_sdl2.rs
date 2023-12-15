@@ -29,6 +29,9 @@ impl Frontend for Sdl2Frontend {
         let event_pump = sdl_context.event_pump().expect("Unable to create event pump");
         Sdl2Frontend { canvas, event_pump }
     }
+    fn screen_size(&self) -> (u32, u32) {
+        self.canvas.output_size().expect("Unable to find the window size")
+    }
     fn clear(&mut self) {
         self.canvas.clear();
     }

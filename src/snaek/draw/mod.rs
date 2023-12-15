@@ -1,6 +1,6 @@
 use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration};
 
-use super::{logic::UserAction, types::{GameState, B_WIDTH, CellState, CellObject, CellFloor, SnakeColor, PowerupType}};
+use super::{logic::UserAction, types::{GameState, B_WIDTH, CellState, CellObject, CellFloor, SnakeColor, PowerupType, Coord, B_HEIGHT}};
 
 pub mod draw_sdl2;
 
@@ -13,6 +13,7 @@ pub trait Frontend {
     type ActionIterator<'a>: Iterator<Item = UserAction> + 'a where Self: 'a;
 
     fn new(size: (u32, u32)) -> Self;
+    fn screen_size(&self) -> (u32, u32);
     fn clear(&mut self);
     fn set_color(&mut self, color: Self::Color);
     fn present(&mut self);
@@ -52,13 +53,27 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
 use crate::{global::W_WIDTH, snaek::types::MAX_WATER_DIST};
 
 /// The width of a single cell in pixels
-const C_SIZE: usize = W_WIDTH as usize / B_WIDTH;
+const C_SIZE: usize = 10;
 
 pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState) {
     f.set_color(EMPTY_COLOR.into());
     f.clear();
-    for (y, row) in s.board.iter().enumerate() {
-        for (x, cell) in row.iter().enumerate() {
+    let (w, h) = f.screen_size();
+    // In blocks
+    let visible_w = w as usize / C_SIZE;
+    let visible_h = h as usize / C_SIZE;
+    // In pixels
+    let Coord { x: snake_x, y: snake_y } = s.snake.head_pos();
+    let xstart = (snake_x as isize - (visible_w / 2) as isize).max(0) as usize;
+    let xstop = (xstart + visible_w + 1).min(B_WIDTH - 1);
+    let xrange = xstart..xstop;
+
+    let ystart = (snake_y as isize - (visible_h / 2) as isize).max(0) as usize;
+    let ystop = (ystart + visible_h + 1).min(B_HEIGHT - 1);
+    let yrange = ystart..ystop;
+
+    for (y, row) in s.board[yrange].iter().enumerate() {
+        for (x, cell) in row[xrange.clone()].iter().enumerate() {
             let rect = ((x * C_SIZE) as i32, (y * C_SIZE) as i32, {(x+1) * C_SIZE} as u32, {(y+1) * C_SIZE} as u32);
             let color = get_cell_color(*cell, s);
             f.set_color(color.into());
