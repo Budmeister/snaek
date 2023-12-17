@@ -219,10 +219,6 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
 
     // Update all cells
     let mut board_new = s.board.clone();
-    // Save a copy of the refs
-    // for ((old_cell, old_surrounding), new_cell) in s.board.surrounding().zip(board_new.inner_cells_mut()) {
-    //     random_tick(old_cell, old_surrounding, new_cell);
-    // }
     let mut board_new_slice: &mut [[CellState; B_WIDTH]] = &mut board_new[1..B_HEIGHT - 1];
     let mut slices = Vec::new();
     let mut slices_left = NUM_BOARD_ADVANCE_THREADS as usize;
@@ -399,9 +395,9 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
         CellFloor::Empty | CellFloor::ExplIndicator => {
             let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
             let weights = [
-                10_000 * w + 2,     // Water spreads to this block
-                20_000 * l + 2,     // Lava spreads to this block
-                3_000 * s + 1,      // Seed spreads to this block
+                1_000 * w + 2,      // Water spreads to this block
+                2_000 * l + 2,      // Lava spreads to this block
+                3_00 * s + 1,       // Seed spreads to this block
                 2_000_000           // Nothing happens
             ];
             let dist = WeightedIndex::new(&weights).unwrap();
