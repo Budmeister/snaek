@@ -1,5 +1,5 @@
 
-use std::ops::{Range, Deref};
+use std::ops::{Range, Deref, DerefMut};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
@@ -24,13 +24,17 @@ pub enum CellObject {
     None,
     Wall,
     Snake(SnakeColor, usize),
-    Food,
-    Powerup(PowerupType),
+    Food(usize),
+    Powerup(PowerupType, usize),
+    SuperPowerup(PowerupType, usize),
     Border,
 }
 impl CellObject {
     pub fn is_powerup(&self) -> bool {
-        matches!(self, Self::Powerup(_))
+        matches!(self, Self::Powerup(..))
+    }
+    pub fn is_super_powerup(&self) -> bool {
+        matches!(self, Self::SuperPowerup(..))
     }
 }
 
@@ -62,6 +66,7 @@ pub enum SnakeColor {
 }
 
 pub const MAX_WATER_DIST: usize = 8;
+pub const FOOD_AND_POWERUP_LIFETIME: usize = 200;
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub struct CellState {
@@ -81,58 +86,42 @@ type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
 #[derive(Clone, Hash, PartialEq, Debug)]
 pub struct Board(Box<BoardArray<B_WIDTH, B_HEIGHT>>);
 impl Board {
+    pub fn surrounding(&self) -> impl Iterator<Item = (&CellState, [&CellState; 8])> {
+        board_ops::surrounding(self.0.deref())
+    }
+
     pub fn cell_at(&self, coord: impl Into<Coord>) -> CellState {
-        let Coord { x, y } = coord.into();
-        self.0[y][x]
+        board_ops::cell_at(self.0.deref(), coord)
     }
+
     pub fn cell_at_mut(&mut self, coord: impl Into<Coord>) -> &mut CellState {
-        let Coord { x, y } = coord.into();
-        &mut self.0[y][x]
+        board_ops::cell_at_mut(self.0.deref_mut(), coord)
     }
-    pub fn surrounding<'a, F>(&'a self, mut thing: F)
-        where F: FnMut(&'a CellState, [&'a CellState; 8])
-    {
-        for y in 0..B_HEIGHT - 2 {
-            let rows = &self.0[y..y+3];
-            if let [top, middle, bottom] = rows {
-                for x in 0..B_WIDTH - 2 {
-                    let top = &top[x..x+3];
-                    let middle = &middle[x..x+3];
-                    let bottom = &bottom[x..x+3];
 
-                    if let (
-                        [c1, c2, c3],
-                        [c4, c5, c6],
-                        [c7, c8, c9]
-                    ) = (top, middle, bottom) {
-                        thing(c5, [c1, c2, c3, c4, c6, c7, c8, c9]);
-                    } // else, how??
-                }
-            } // else, how??
-        }
+    pub fn cells(&self) -> impl Iterator<Item = &CellState> {
+        board_ops::cells( self.0.deref())
     }
-    pub fn surrounding_mut<F>(&mut self, mut thing: F)
-        where F: FnMut(&mut CellState, [&mut CellState; 8])
-    {
-        for y in 0..B_HEIGHT - 2 {
-            let rows = &mut self.0[y..y+3];
-            if let [top, middle, bottom] = rows {
-                for x in 0..B_WIDTH - 2 {
-                    let top = &mut top[x..x+3];
-                    let middle = &mut middle[x..x+3];
-                    let bottom = &mut bottom[x..x+3];
 
-                    if let (
-                        [c1, c2, c3],
-                        [c4, c5, c6],
-                        [c7, c8, c9]
-                    ) = (top, middle, bottom) {
-                        thing(c5, [c1, c2, c3, c4, c6, c7, c8, c9]);
-                    } // else, how??
-                }
-            } // else, how??
-        }
+    pub fn cells_mut(&mut self) -> impl Iterator<Item = &mut CellState> {
+        board_ops::cells_mut(self.0.deref_mut())
     }
+
+    pub fn inner_cells(&self) -> impl Iterator<Item = &CellState> {
+        board_ops::inner_cells(self.0.deref())
+    }
+
+    pub fn inner_cells_mut(&mut self) -> impl Iterator<Item = &mut CellState> {
+        board_ops::inner_cells_mut(self.0.deref_mut())
+    }
+
+    pub fn inner_cells_horiz(&self) -> impl Iterator<Item = &CellState> {
+        board_ops::inner_cells_horiz(self.0.deref())
+    }
+
+    pub fn inner_cells_horiz_mut(&mut self) -> impl Iterator<Item = &mut CellState> {
+        board_ops::inner_cells_horiz_mut(self.0.deref_mut())
+    }
+
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut board_vec: Vec<Vec<CellState>> = (0..B_HEIGHT)
             .map(|_| vec![CellState::default(); B_WIDTH])
@@ -176,6 +165,98 @@ impl Deref for Board {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+impl DerefMut for Board {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+macro_rules! window3 {
+    ($expr:expr) => {
+        zip3!($expr.into_iter(), $expr.into_iter().skip(1), $expr.into_iter().skip(2))
+    }
+}
+
+macro_rules! zip3 {
+    ($first:expr, $second:expr, $third:expr) => {
+        $first.into_iter().zip($second).zip($third).map(
+            |((first, second), third)| (first, second, third)
+        )
+    }
+}
+
+/// Board Ops and Iterators
+/// I wish I could implement these directly on the slice, but I can't :(
+/// Even with extension traits, it's not possible to implement functions
+/// that return iterators (impl Iterator) for foreign types.
+pub mod board_ops {
+    use super::Coord;
+
+    pub fn surrounding<T, const W: usize>(slice: &[[T; W]]) -> impl Iterator<Item = (&T, [&T; 8])> {
+        window3!(slice.iter())
+            .map(|(top, middle, bottom)| {
+                zip3!(
+                    window3!(top.iter()),
+                    window3!(middle.iter()),
+                    window3!(bottom.iter())
+                )
+            })
+            .flatten()
+            .map(|(
+                (c1, c2, c3),
+                (c4, c5, c6),
+                (c7, c8, c9)
+            )| {
+                (c5, [c1, c2, c3, c4, c6, c7, c8, c9])
+            })
+    }
+    pub fn cell_at<T: Copy, const W: usize>(slice: &[[T; W]], coord: impl Into<Coord>) -> T {
+        let Coord { x, y } = coord.into();
+        slice[y][x]
+    }
+
+    pub fn cell_at_mut<T, const W: usize>(slice: &mut [[T; W]], coord: impl Into<Coord>) -> &mut T {
+        let Coord { x, y } = coord.into();
+        &mut slice[y][x]
+    }
+
+    pub fn cells<T, const W: usize>(slice: &[[T; W]]) -> impl Iterator<Item = &T> {
+        slice
+            .iter()
+            .flat_map(|row| row.iter())
+    }
+
+    pub fn cells_mut<T, const W: usize>(slice: &mut [[T; W]]) -> impl Iterator<Item = &mut T> {
+        slice
+            .iter_mut()
+            .flat_map(|row| row.iter_mut())
+    }
+
+    pub fn inner_cells<T, const W: usize>(slice: &[[T; W]]) -> impl Iterator<Item = &T> {
+        slice[1..slice.len() - 1]
+            .iter()
+            .flat_map(|row| row[1..W - 1].iter())
+    }
+
+    pub fn inner_cells_mut<T, const W: usize>(slice: &mut [[T; W]]) -> impl Iterator<Item = &mut T> {
+        let h = slice.len();
+        slice[1..h - 1]
+            .iter_mut()
+            .flat_map(|row| row[1..W - 1].iter_mut())
+    }
+
+    pub fn inner_cells_horiz<T, const W: usize>(slice: &[[T; W]]) -> impl Iterator<Item = &T> {
+        slice
+            .iter()
+            .flat_map(|row| row[1..W - 1].iter())
+    }
+
+    pub fn inner_cells_horiz_mut<T, const W: usize>(slice: &mut [[T; W]]) -> impl Iterator<Item = &mut T> {
+        slice
+            .iter_mut()
+            .flat_map(|row| row[1..W - 1].iter_mut())
     }
 }
 
@@ -331,4 +412,19 @@ pub struct GameState {
     pub lava_count: usize,
     pub turf_count: usize,
     pub seed_count: usize,
+}
+
+trait Boxed {
+    fn boxed(self) -> Box<Self>
+        where Self: Sized
+    {
+        Box::new(self)
+    }
+}
+impl<T: Sized> Boxed for T {}
+
+trait BucketsMut<T> {
+    fn buckets_mut<const N: usize>(&mut self) -> Option<[&mut [T]; N]> {
+        todo!()
+    }
 }

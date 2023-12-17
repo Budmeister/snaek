@@ -1,3 +1,5 @@
 /target
 /into_color/target
 /res/levels
+frame_times.csv
+window_loop_times.csv

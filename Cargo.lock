@@ -1509,6 +1509,7 @@ dependencies = [
  "once_cell",
  "piston_window",
  "rand",
+ "scoped_threadpool",
  "sdl2",
 ]
 

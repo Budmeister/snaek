@@ -1,6 +1,31 @@
-use std::{sync::{Arc, RwLock, mpsc::Sender}, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        RwLock,
+        mpsc::Sender
+    },
+    time::{
+        Duration,
+        Instant
+    },
+    fs::OpenOptions,
+    io::Write
+};
 
-use super::{logic::UserAction, types::{GameState, B_WIDTH, CellState, CellObject, CellFloor, SnakeColor, PowerupType, Coord, B_HEIGHT}};
+use super::{
+    logic::UserAction,
+    types::{
+        GameState,
+        B_WIDTH,
+        CellState,
+        CellObject,
+        CellFloor,
+        SnakeColor,
+        PowerupType,
+        Coord,
+        B_HEIGHT
+    }
+};
 
 pub mod draw_sdl2;
 
@@ -22,12 +47,23 @@ pub trait Frontend {
 }
 
 
+///////////////////////////////////////////////////////////
+
 pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<UserAction>) {
+    // Open a file in append mode for the window loop timings
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open("window_loop_times.csv")
+        .unwrap();
+
     f.set_color(EMPTY_COLOR.into());
     f.clear();
     f.present();
 
     'running: loop {
+        let start = Instant::now();
+
         for action in f.get_actions() {
             match tx.send(action) {
                 Ok(_) => (),
@@ -46,9 +82,19 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
         }
 
         f.present();
+
+        let duration = start.elapsed();
+        // Write the duration to the file
+        writeln!(file, "{},", duration.as_millis()).unwrap();
+
+        // if let Some(remaining) = Duration::new(0, 1_000_000u32 / 60).checked_sub(duration) {
+        //     thread::sleep(remaining);
+        // }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
+
+///////////////////////////////////////////////////////////
 
 use crate::{global::W_WIDTH, snaek::types::MAX_WATER_DIST};
 
@@ -83,7 +129,10 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState) {
 }
 
 fn get_cell_color(cell: CellState, s: &GameState) -> Color {
-    if cell.obj == CellObject::None || (cell.obj.is_powerup() && s.frame_num % 2 == 0) {
+    if cell.obj == CellObject::None || 
+            (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0) ||
+            (cell.obj.is_super_powerup() && s.frame_num % 2 == 0)
+    {
         get_floor_color(cell.floor)
     } else {
         get_object_color(cell.obj, s)
@@ -109,8 +158,8 @@ fn get_object_color(obj: CellObject, s: &GameState) -> Color {
         CellObject::Snake(SnakeColor::DarkRed, _) => SNAKE_COLOR_DARK_RED,
         CellObject::Snake(SnakeColor::LightRed, _) => SNAKE_COLOR_LIGHT_RED,
         CellObject::Snake(SnakeColor::Head, _) => if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD },
-        CellObject::Food => FOOD_COLOR,
-        CellObject::Powerup(pwr) => match pwr {
+        CellObject::Food(..) => FOOD_COLOR,
+        CellObject::Powerup(pwr, ..) | CellObject::SuperPowerup(pwr, ..) => match pwr {
             PowerupType::Water => WATER_COLOR,
             PowerupType::Explosive => EXPLOSIVE_COLOR,
             PowerupType::Turf => TURF_COLOR,
