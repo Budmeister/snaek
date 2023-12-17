@@ -8,6 +8,7 @@ use std::{
         Duration,
         Instant
     },
+    thread,
     fs::OpenOptions,
     io::Write
 };
@@ -87,10 +88,12 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
         // Write the duration to the file
         writeln!(file, "{},", duration.as_millis()).unwrap();
 
-        // if let Some(remaining) = Duration::new(0, 1_000_000u32 / 60).checked_sub(duration) {
-        //     thread::sleep(remaining);
-        // }
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        if let Some(remaining) = Duration::new(0, 1_000_000u32 / 60).checked_sub(duration) {
+            thread::sleep(remaining);
+        } else {
+            thread::sleep(Duration::from_millis(1));
+        }
+        // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
 

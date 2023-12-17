@@ -121,10 +121,12 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
 
             // Write the duration to the file
             writeln!(file, "{},", duration.as_millis()).unwrap();
-            // if let Some(remaining) = Duration::from_millis(100).checked_sub(duration) {
-            //     thread::sleep(remaining);
-            // }
-            thread::sleep(Duration::from_millis(100));
+            if let Some(remaining) = Duration::from_millis(100).checked_sub(duration) {
+                thread::sleep(remaining);
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+            // thread::sleep(Duration::from_millis(100));
         }
     })
 }
@@ -398,10 +400,10 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
         CellFloor::Empty | CellFloor::ExplIndicator => {
             let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
             let weights = [
-                100 * w + 2,    // Water spreads to this block
-                200 * l + 2,    // Lava spreads to this block
-                30 * s + 1,     // Seed spreads to this block
-                20_000          // Nothing happens
+                10_000 * w + 2,     // Water spreads to this block
+                20_000 * l + 2,     // Lava spreads to this block
+                3_000 * s + 1,      // Seed spreads to this block
+                2_000_000           // Nothing happens
             ];
             let dist = WeightedIndex::new(&weights).unwrap();
 
@@ -416,12 +418,11 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
         }
         CellFloor::Water => {
             let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
-            let even = w % 2 == 0;
             let weights = [
-                30 * l,                         // This block turns to obsidian
-                15 * s,                         // Seed spreads to this block
-                10 + if even { 10 } else { 0 }, // This block dries up
-                10 * w + 35                     // Nothing happens
+                3_000 * l,          // This block turns to obsidian
+                1_500 * s,          // Seed spreads to this block
+                1,                  // This block dries up
+                10_000 * w + 3_500  // Nothing happens
             ];
             let dist = WeightedIndex::new(&weights).unwrap();
 
@@ -437,7 +438,7 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
         CellFloor::Lava => {
             let (w, l) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava);
             let mut rng = rand::thread_rng();
-            let num = rng.gen_range(0..20_000usize);
+            let num = rng.gen_range(0..20_000_000usize);
             let weights = [
                 300 * w,                        // This block turns to obsidian
                 30,                             // Nothing happens
@@ -459,8 +460,8 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
             let weights = [
                 100 * w,        // Water spreads to this block
                 700 * l,        // Lava spreads to this block
-                20 * dist,      // This seed dies
-                20 * dist_inv,  // This seed spawns food
+                2 * dist,       // This seed dies
+                2 * dist_inv,   // This seed spawns food
                 700             // Nothing happens
             ];
             let distr = WeightedIndex::new(&weights).unwrap();
@@ -492,11 +493,11 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
             let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
             let mut rng = rand::thread_rng();
             let weights = [
-                10 * w, // Water spreads to this block
-                70 * l, // Lava spreads to this block
-                3 * s,  // Seed spreads to this block
-                3,      // This dead seed despawns
-                35      // Nothing happens
+                1_000 * w,  // Water spreads to this block
+                7_000 * l,  // Lava spreads to this block
+                3 * s,      // Seed spreads to this block
+                1,          // This dead seed despawns
+                3_500       // Nothing happens
             ];
             let distr = WeightedIndex::new(&weights).unwrap();
 
