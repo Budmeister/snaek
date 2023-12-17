@@ -126,7 +126,6 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
             } else {
                 thread::sleep(Duration::from_millis(1));
             }
-            // thread::sleep(Duration::from_millis(100));
         }
     })
 }
@@ -324,12 +323,12 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
         CellState { floor: CellFloor::Lava, .. } |
         CellState { obj: CellObject::Wall, .. } => {
             if s.invinc_time == 0 {
-                fail(s);
+                fail(s, "Hit wall or lava!");
             }
         }
         CellState { obj: CellObject::Border, .. } => {
             // Fail even with invincibility
-            fail(s);
+            fail(s, "Hit border!");
         }
         _ => {}
     }
@@ -762,8 +761,9 @@ fn _place_debug(board: &mut Board) {
     }
 }
 
-fn fail(s: &mut GameState) {
+fn fail(s: &mut GameState, message: &str) {
     s.failed = true;
+    println!("{}", message);
     println!("Failed. Press F to pay respects.");
 }
 

@@ -93,13 +93,12 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
         } else {
             thread::sleep(Duration::from_millis(1));
         }
-        // ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
 
 ///////////////////////////////////////////////////////////
 
-use crate::{global::W_WIDTH, snaek::types::MAX_WATER_DIST};
+use crate::snaek::types::MAX_WATER_DIST;
 
 /// The width of a single cell in pixels
 const C_SIZE: usize = 10;
@@ -113,12 +112,32 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState) {
     let visible_h = h as usize / C_SIZE;
     // In pixels
     let Coord { x: snake_x, y: snake_y } = s.snake.head_pos();
-    let xstart = (snake_x as isize - (visible_w / 2) as isize).max(0) as usize;
-    let xstop = (xstart + visible_w + 1).min(B_WIDTH - 1);
+    let (w, h) = (B_WIDTH as isize, B_HEIGHT as isize);
+
+    let mut xstart = snake_x as isize - (visible_w / 2) as isize;
+    let mut xstop = xstart + visible_w as isize;
+    if xstop > w {
+        xstart -= xstop - w;
+        xstop = w;
+    }
+    if xstart < 0 {
+        xstart = 0;
+        xstop = w;
+    }
+    let (xstart, xstop) = (xstart as usize, xstop as usize);
     let xrange = xstart..xstop;
 
-    let ystart = (snake_y as isize - (visible_h / 2) as isize).max(0) as usize;
-    let ystop = (ystart + visible_h + 1).min(B_HEIGHT - 1);
+    let mut ystart = snake_y as isize - (visible_h / 2) as isize;
+    let mut ystop = ystart + visible_h as isize;
+    if ystop > h {
+        ystart -= ystop - h;
+        ystop = h;
+    }
+    if ystart < 0 {
+        ystart = 0;
+        ystop = h;
+    }
+    let (ystart, ystop) = (ystart as usize, ystop as usize);
     let yrange = ystart..ystop;
 
     for (y, row) in s.board[yrange].iter().enumerate() {
