@@ -250,8 +250,6 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
     });
     s.board = board_new;
 
-    place_score_banner_details(s);
-
     // Decrement powerup
     if s.invinc_time != 0 {
         s.invinc_time -= 1;
@@ -681,59 +679,6 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
     }
 }
 */
-
-pub fn place_score_banner_details(s: &mut GameState) {
-    // Place powerups
-    let pwr_details = [
-        (s.water_pwrs, CellState { floor: CellFloor::Water, obj: CellObject::None }),
-        (s.explo_pwrs, CellState { floor: CellFloor::ExplIndicator, obj: CellObject::None }),
-        (s.turf_pwrs, CellState { floor: CellFloor::Turf, obj: CellObject::None }),
-        (s.seed_pwrs, CellState { floor: CellFloor::Seed(0), obj: CellObject::None })
-    ];
-    let y = 13 + G_HEIGHT;
-    let empty = CellState { floor: CellFloor::Empty, obj: CellObject::None };
-
-    for (i, (pwr_count, fill)) in pwr_details.into_iter().enumerate() {
-        let x = 3 + 12 * i;
-        let mut count = 0;
-
-        for dy in 0..3 {
-            for dx in 0..5 {
-                let coord = (x + 2 * dx, y + 2 * dy);
-                if count < pwr_count {
-                    s.board.pt(coord, fill);
-                } else {
-                    s.board.pt(coord, empty);
-                }
-                count += 1;
-            }
-        }
-    }
-
-    // Place score and invincibility powerup
-    let x = 63;
-    let turf = CellState { floor: CellFloor::Turf, obj: CellObject::None };
-    let wall = CellState { floor: CellFloor::Empty, obj: CellObject::Wall };
-
-    let y = 4 + G_HEIGHT;
-    let score = s.snake.len();
-    let score_str = score.to_string();
-    s.board.text(&score_str, (x, y), turf, wall);
-
-    let y = 11 + G_HEIGHT;
-    let invinc = s.invinc_time;
-    let invinc_str = format!("{}{}", invinc,
-        if invinc < 10 {
-            "  "
-        } else if invinc < 100 {
-            " "
-        } else {
-            ""
-        }
-    );
-    s.board.text(&invinc_str, (x, y), turf, wall);
-
-}
 
 fn _place_debug(board: &mut Board) {
     for i in 2..=10 {

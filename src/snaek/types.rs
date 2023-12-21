@@ -84,7 +84,7 @@ pub const G_HEIGHT: usize = 60;
 type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
 
 #[derive(Clone, Hash, PartialEq, Debug)]
-pub struct Board(Box<BoardArray<B_WIDTH, B_HEIGHT>>);
+pub struct Board<const W: usize = B_WIDTH, const H: usize = B_HEIGHT>(Box<BoardArray<W, H>>);
 impl Board {
     pub fn surrounding(&self) -> impl Iterator<Item = (&CellState, [&CellState; 8])> {
         board_ops::surrounding(self.0.deref())
