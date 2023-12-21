@@ -15,7 +15,7 @@ pub enum CellFloor {
     /// Holds distance from water
     Seed(usize),
     DeadSeed,
-    ExplIndicator,
+    Indicator(IndicatorType),
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -59,6 +59,12 @@ impl Distribution<PowerupType> for Standard {
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
+pub enum IndicatorType {
+    Explosion,
+    Dirt,
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub enum SnakeColor {
     DarkRed,
     LightRed,
@@ -85,7 +91,7 @@ type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
 
 #[derive(Clone, Hash, PartialEq, Debug)]
 pub struct Board<const W: usize = B_WIDTH, const H: usize = B_HEIGHT>(Box<BoardArray<W, H>>);
-impl Board {
+impl<const W: usize, const H: usize> Board<W, H> {
     pub fn surrounding(&self) -> impl Iterator<Item = (&CellState, [&CellState; 8])> {
         board_ops::surrounding(self.0.deref())
     }
@@ -123,15 +129,15 @@ impl Board {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut board_vec: Vec<Vec<CellState>> = (0..B_HEIGHT)
-            .map(|_| vec![CellState::default(); B_WIDTH])
+        let mut board_vec: Vec<Vec<CellState>> = (0..H)
+            .map(|_| vec![CellState::default(); W])
             .collect();
 
         for (i, &byte) in bytes.iter().chain(SCORE_BANNER.iter()).enumerate() {
-            let x = i % B_WIDTH;
-            let y = i / B_WIDTH;
+            let x = i % W;
+            let y = i / W;
 
-            if y < B_HEIGHT {
+            if y < H {
                 board_vec[y][x] = match byte {
                     0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None },
                     0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None },
@@ -140,16 +146,17 @@ impl Board {
                     0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall },
                     0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border },
                     0x6 => CellState { floor: CellFloor::Seed(0), obj: CellObject::None },
-                    0x7 => CellState { floor: CellFloor::ExplIndicator, obj: CellObject::None },
+                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::Explosion), obj: CellObject::None },
+                    0x8 => CellState { floor: CellFloor::Indicator(IndicatorType::Dirt), obj: CellObject::None },
                     _ => CellState::default(),
                 };
             }
         }
 
-        let board: Box<BoardArray<B_WIDTH, B_HEIGHT>> = board_vec
+        let board: Box<BoardArray<W, H>> = board_vec
             .into_iter()
             .map(|row| {
-                let boxed_row: Box<[CellState; B_WIDTH]> = row.into_boxed_slice().try_into().expect("Row had incorrect length");
+                let boxed_row: Box<[CellState; W]> = row.into_boxed_slice().try_into().expect("Row had incorrect length");
                 *boxed_row
             })
             .collect::<Vec<_>>()
@@ -160,8 +167,8 @@ impl Board {
         Board(board)
     }
 }
-impl Deref for Board {
-    type Target = BoardArray<B_WIDTH, B_HEIGHT>;
+impl<const W: usize, const H: usize> Deref for Board<W, H> {
+    type Target = BoardArray<W, H>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

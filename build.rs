@@ -26,6 +26,7 @@ fn main() {
                     Rgba([0x42, 0x00, 0x5E, 0xFF]) => 0x5, // Border
                     Rgba([0x06, 0x5e, 0x00, 0xFF]) => 0x6, // Seed
                     Rgba([0x69, 0x69, 0x69, 0xFF]) => 0x7, // Explosion indicator
+                    Rgba([0x42, 0x24, 0x17, 0xFF]) => 0x8, // Dirt indicator
                     _ => 0x0, // Default to Empty
                 };
                 output.push(byte);

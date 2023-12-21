@@ -24,8 +24,8 @@ use super::{
         SnakeColor,
         PowerupType,
         Coord,
-        B_HEIGHT
-    }
+        B_HEIGHT, IndicatorType, Board
+    }, levels
 };
 
 pub mod draw_sdl2;
@@ -62,6 +62,8 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
     f.clear();
     f.present();
 
+    let mut v = reset_view_state();
+
     'running: loop {
         let start = Instant::now();
 
@@ -79,7 +81,7 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
 
         {
             let s_r = s.read().unwrap();
-            draw_board(&mut f, &s_r);
+            draw_board(&mut f, &s_r, &v);
         }
 
         f.present();
@@ -103,12 +105,17 @@ use crate::snaek::types::MAX_WATER_DIST;
 /// The width of a single cell in pixels
 const C_SIZE: usize = 10;
 
-pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState) {
+pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &ViewState) {
     f.set_color(EMPTY_COLOR.into());
     f.clear();
     let (w, h) = f.screen_size();
+
+    // The size in pixels of a cell in the scoreboard
+    let sb_csize = h as usize / SB_HEIGHT;
+    let sb_x = w as usize - sb_csize * SB_WIDTH;
+
     // In blocks
-    let visible_w = w as usize / C_SIZE;
+    let visible_w = sb_x / C_SIZE;
     let visible_h = h as usize / C_SIZE;
     // In pixels
     let Coord { x: snake_x, y: snake_y } = s.snake.head_pos();
@@ -140,9 +147,19 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState) {
     let (ystart, ystop) = (ystart as usize, ystop as usize);
     let yrange = ystart..ystop;
 
+    // Start drawing at the top and left -- this also means we have room for the scoreboard
     for (y, row) in s.board[yrange].iter().enumerate() {
         for (x, cell) in row[xrange.clone()].iter().enumerate() {
-            let rect = ((x * C_SIZE) as i32, (y * C_SIZE) as i32, {(x+1) * C_SIZE} as u32, {(y+1) * C_SIZE} as u32);
+            let rect = ((x * C_SIZE) as i32, (y * C_SIZE) as i32, C_SIZE as u32, C_SIZE as u32);
+            let color = get_cell_color(*cell, s);
+            f.set_color(color.into());
+            f.draw_rect(rect.into());
+        }
+    }
+
+    for (y, row) in v.scoreboard[..].iter().enumerate() {
+        for (x, cell) in row.iter().enumerate() {
+            let rect = ((x * sb_csize + sb_x) as i32, (y * sb_csize) as i32, (sb_csize+1) as u32, (sb_csize+1) as u32);
             let color = get_cell_color(*cell, s);
             f.set_color(color.into());
             f.draw_rect(rect.into());
@@ -169,7 +186,8 @@ fn get_floor_color(floor: CellFloor) -> Color {
         CellFloor::Turf => TURF_COLOR,
         CellFloor::Seed(dist) => SEED_COLORS[dist.min(MAX_WATER_DIST - 1)],
         CellFloor::DeadSeed => DEAD_SEED_COLOR,
-        CellFloor::ExplIndicator => EXPLOSIVE_COLOR,
+        CellFloor::Indicator(IndicatorType::Explosion) => EXPLOSIVE_COLOR,
+        CellFloor::Indicator(IndicatorType::Dirt) => DIRT_COLOR,
     }
 }
 
@@ -189,6 +207,19 @@ fn get_object_color(obj: CellObject, s: &GameState) -> Color {
             PowerupType::Invincibility => INVINC_COLOR,
         }
         CellObject::Border => BORDER_COLOR,
+    }
+}
+
+pub const SB_WIDTH: usize = 25;
+pub const SB_HEIGHT: usize = 100;
+
+pub struct ViewState {
+    pub scoreboard: Board<SB_WIDTH, SB_HEIGHT>,
+}
+
+fn reset_view_state() -> ViewState {
+    ViewState {
+        scoreboard: Board::<SB_WIDTH, SB_HEIGHT>::from_bytes(levels::SCORE_BANNER_VERT),
     }
 }
 
@@ -225,3 +256,6 @@ const SNAKE_COLOR_HEAD_WITH_INVINC: Color = as_color!("#f8ffbd");
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
 const INVINC_COLOR: Color = as_color!("#000000");
+
+// Other colors
+const DIRT_COLOR: Color = as_color!("#422417");

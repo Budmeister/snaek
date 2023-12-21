@@ -23,3 +23,4 @@ pub static THREE_BASINS_LEVEL: &[u8] = include_bytes!("../../res/levels/three_ba
 pub static HUMBLE_BEGINNINGS_LEVEL: &[u8] = include_bytes!("../../res/levels/humble_beginnings.bin");
 
 pub static SCORE_BANNER: &[u8] = include_bytes!("../../res/levels/score_banner.bin");
+pub static SCORE_BANNER_VERT: &[u8] = include_bytes!("../../res/levels/score_banner_vertical.bin");

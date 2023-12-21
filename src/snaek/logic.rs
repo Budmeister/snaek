@@ -364,7 +364,7 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
         CellFloor::Lava => s.lava_count += 1,
         CellFloor::Turf => s.turf_count += 1,
         CellFloor::Seed(_) => s.seed_count += 1,
-        CellFloor::DeadSeed | CellFloor::ExplIndicator => {},
+        CellFloor::DeadSeed | CellFloor::Indicator(..) => {},
     }
 }
 
@@ -390,7 +390,7 @@ pub fn random_tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_c
 fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState) {
     match old_cell.floor {
         CellFloor::Turf => {}
-        CellFloor::Empty | CellFloor::ExplIndicator => {
+        CellFloor::Empty | CellFloor::Indicator(..) => {
             let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
             let weights = [
                 1_000 * w + 2,      // Water spreads to this block
