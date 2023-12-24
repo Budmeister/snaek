@@ -166,7 +166,7 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
                 UserAction::Explosion => {
                     if s.explo_pwrs != 0 {
                         s.explo_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), CellState { floor: CellFloor::Empty, obj: CellObject::None });
+                        s.board.explosion(s.snake.head_pos(), (CellFloor::Empty, CellObject::None));
                         println!("Used explosion powerup, {} remaining", s.explo_pwrs);
                     }
                 }
@@ -402,8 +402,8 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 
             let mut rng = rand::thread_rng();
             match dist.sample(&mut rng) {
-                0 => new_cell.update(CellState { floor: CellFloor::Water, obj: CellObject::None }),
-                1 => new_cell.update(CellState { floor: CellFloor::Lava, obj: CellObject::None }),
+                0 => new_cell.update((CellFloor::Water, CellObject::None )),
+                1 => new_cell.update((CellFloor::Lava, CellObject::None )),
                 2 => new_cell.update(CellFloor::Seed(0)),
                 3 => {}
                 _ => {}
@@ -421,7 +421,7 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 
             let mut rng = rand::thread_rng();
             match dist.sample(&mut rng) {
-                0 => new_cell.update(CellState { floor: CellFloor::Empty, obj: CellObject::Wall }),
+                0 => new_cell.update((CellFloor::Empty, CellObject::Wall)),
                 1 => new_cell.update(CellFloor::Seed(0)),
                 2 => new_cell.update(CellFloor::Empty),
                 3 => {}
@@ -440,9 +440,9 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
             let dist = WeightedIndex::new(&weights).unwrap();
 
             match dist.sample(&mut rng) {
-                0 => new_cell.update(CellState { floor: CellFloor::Empty, obj: CellObject::Wall }),
+                0 => new_cell.update((CellFloor::Empty, CellObject::Wall)),
                 1 => {},
-                2 => new_cell.update(CellState { floor: CellFloor::Turf, obj: CellObject::SuperPowerup(rng.gen(), FOOD_AND_POWERUP_LIFETIME)}),
+                2 => new_cell.update((CellFloor::Turf, CellObject::SuperPowerup(rng.gen(), FOOD_AND_POWERUP_LIFETIME))),
                 _ => {}
             }
         }
@@ -463,7 +463,7 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
             match num {
                 0 => new_cell.update(CellFloor::Water),
                 1 => new_cell.update(CellFloor::Lava),
-                2 => new_cell.update(CellState { floor: CellFloor::DeadSeed, obj: CellObject::None }),
+                2 => new_cell.update((CellFloor::DeadSeed, CellObject::None)),
                 3 => new_cell.update(CellObject::Food(FOOD_AND_POWERUP_LIFETIME)),
                 4 => {}
                 _ => {}

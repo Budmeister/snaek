@@ -28,10 +28,12 @@ use super::{
     }, levels
 };
 
+use crate::sized_color_space;
+
 pub mod draw_sdl2;
 
 pub use draw_sdl2::Sdl2Frontend;
-use into_color::as_color;
+use into_color::{as_color, color_space};
 
 pub trait Frontend {
     type Color: From<Color>;
@@ -172,15 +174,15 @@ fn get_cell_color(cell: CellState, s: &GameState) -> Color {
             (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0) ||
             (cell.obj.is_super_powerup() && s.frame_num % 2 == 0)
     {
-        get_floor_color(cell.floor)
+        get_floor_color(cell.floor, cell.elev)
     } else {
         get_object_color(cell.obj, s)
     }
 }
 
-fn get_floor_color(floor: CellFloor) -> Color {
+fn get_floor_color(floor: CellFloor, elev: u8) -> Color {
     match floor {
-        CellFloor::Empty => EMPTY_COLOR,
+        CellFloor::Empty => TERRAIN_COLORS[elev as usize],
         CellFloor::Water => WATER_COLOR,
         CellFloor::Lava => LAVA_COLOR,
         CellFloor::Turf => TURF_COLOR,
@@ -259,3 +261,28 @@ const INVINC_COLOR: Color = as_color!("#000000");
 
 // Other colors
 const DIRT_COLOR: Color = as_color!("#422417");
+
+
+// Terrain colors
+sized_color_space!{
+    TERRAIN_COLORS = [
+        ("#ffffff", 0.0),
+        ("#828282", 0.15),
+        ("#007103", 0.4),
+        ("#bab783", 0.42),
+        ("#7b3c02", 0.44),
+        ("#008d71", 0.55),
+        ("#000000", 1.0)
+    ],
+    NUM_TERRAIN_COLORS = 256
+}
+
+mod macros {
+    #[macro_export]
+    macro_rules! sized_color_space {
+        ($name:ident = [ $( $color:expr ),* ], $len_name:ident = $len:literal) => {
+            const $name: [(u8, u8, u8); $len] = color_space!([ $( $color ),* ], $len);
+            const $len_name: usize = $len;
+        };
+    }
+}

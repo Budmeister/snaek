@@ -6,40 +6,93 @@ const EXPLOSION_WALK_COUNT: usize = 30;
 const EXPLOSION_WALK_MAX_DIST: usize = 30;
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
-pub enum Fill {
-    Floor(CellFloor),
-    Object(CellObject),
-    Both(CellState),
+pub struct Fill {
+    floor: Option<CellFloor>,
+    obj: Option<CellObject>,
+    elev: Option<u8>
 }
 impl From<CellFloor> for Fill {
     fn from(value: CellFloor) -> Self {
-        Self::Floor(value)
+        Self {
+            floor: Some(value),
+            obj: None,
+            elev: None,
+        }
     }
 }
 impl From<CellObject> for Fill {
     fn from(value: CellObject) -> Self {
-        Self::Object(value)
+        Self {
+            floor: None,
+            obj: Some(value),
+            elev: None,
+        }
+    }
+}
+impl From<u8> for Fill {
+    fn from(value: u8) -> Self {
+        Self {
+            floor: None,
+            obj: None,
+            elev: Some(value),
+        }
     }
 }
 impl From<CellState> for Fill {
     fn from(value: CellState) -> Self {
-        Self::Both(value)
+        Self {
+            floor: Some(value.floor),
+            obj: Some(value.obj),
+            elev: Some(value.elev),
+        }
+    }
+}
+impl Fill {
+    pub fn update(&mut self, other: Fill) {
+        self.floor = other.floor.or(self.floor);
+        self.obj = other.obj.or(self.obj);
+        self.elev = other.elev.or(self.elev);
+    }
+}
+impl<F1: Into<Fill>, F2: Into<Fill>> From<(F1, F2)> for Fill {
+    fn from(value: (F1, F2)) -> Self {
+        let (f1, f2) = value;
+        let (mut f1, f2) = (f1.into(), f2.into());
+        f1.update(f2);
+        f1
     }
 }
 impl CellState {
     pub fn update(&mut self, fill: impl Into<Fill>) {
-        match fill.into() {
-            Fill::Floor(floor) => self.floor = floor,
-            Fill::Object(obj) => self.obj = obj,
-            Fill::Both(state) => *self = state,
+        let fill = fill.into();
+        if let Some(floor) = fill.floor {
+            self.floor = floor;
+        }
+        if let Some(obj) = fill.obj {
+            self.obj = obj;
+        }
+        if let Some(elev) = fill.elev {
+            self.elev = elev
         }
     }
     pub fn matches(&self, other: impl Into<Fill>) -> bool {
-        match other.into() {
-            Fill::Floor(floor) => self.floor == floor,
-            Fill::Object(obj) => self.obj == obj,
-            Fill::Both(state) => *self == state,
+        let other = other.into();
+        if let Some(floor) = other.floor {
+            if self.floor != floor {
+                return false;
+            }
         }
+        if let Some(obj) = other.obj {
+            if self.obj != obj {
+                return false;
+            }
+        }
+        if let Some(elev) = other.elev {
+            if self.elev != elev {
+                return false;
+            }
+        }
+        true
     }
 }
 

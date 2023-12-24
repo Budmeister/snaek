@@ -8,6 +8,7 @@ build = "build.rs"
 
 [build-dependencies]
 image = "0.23.14"
+into_color = { path = "into_color" }
 
 [dependencies]
 into_color = { path = "into_color" }

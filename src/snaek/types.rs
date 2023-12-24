@@ -1,5 +1,5 @@
 
-use std::ops::{Range, Deref, DerefMut};
+use std::{ops::{Range, Deref, DerefMut}, mem::MaybeUninit};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
@@ -78,6 +78,7 @@ pub const FOOD_AND_POWERUP_LIFETIME: usize = 200;
 pub struct CellState {
     pub floor: CellFloor,
     pub obj: CellObject,
+    pub elev: u8,
 }
 
 /// The width of the board in cells. Must be less than `isize::MAX`
@@ -133,21 +134,21 @@ impl<const W: usize, const H: usize> Board<W, H> {
             .map(|_| vec![CellState::default(); W])
             .collect();
 
-        for (i, &byte) in bytes.iter().chain(SCORE_BANNER.iter()).enumerate() {
+        for (i, [&floor, &elev]) in bytes.iter().chunks::<2>().enumerate() {
             let x = i % W;
             let y = i / W;
 
             if y < H {
-                board_vec[y][x] = match byte {
-                    0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None },
-                    0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None },
-                    0x2 => CellState { floor: CellFloor::Lava, obj: CellObject::None },
-                    0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None },
-                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall },
-                    0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border },
-                    0x6 => CellState { floor: CellFloor::Seed(0), obj: CellObject::None },
-                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::Explosion), obj: CellObject::None },
-                    0x8 => CellState { floor: CellFloor::Indicator(IndicatorType::Dirt), obj: CellObject::None },
+                board_vec[y][x] = match floor {
+                    0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev },
+                    0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None, elev },
+                    0x2 => CellState { floor: CellFloor::Lava, obj: CellObject::None, elev },
+                    0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None, elev },
+                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
+                    0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
+                    0x6 => CellState { floor: CellFloor::Seed(0), obj: CellObject::None, elev },
+                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::Explosion), obj: CellObject::None, elev },
+                    0x8 => CellState { floor: CellFloor::Indicator(IndicatorType::Dirt), obj: CellObject::None, elev },
                     _ => CellState::default(),
                 };
             }
@@ -430,8 +431,51 @@ trait Boxed {
 }
 impl<T: Sized> Boxed for T {}
 
-trait BucketsMut<T> {
-    fn buckets_mut<const N: usize>(&mut self) -> Option<[&mut [T]; N]> {
-        todo!()
+struct Chunks<I, T, const C: usize>
+    where I: Iterator<Item = T>
+{
+    iter: I,
+}
+trait IntoChunks<T> {
+    fn chunks<const C: usize>(self) -> Chunks<Self, T, C> where Self: Iterator<Item = T> + Sized;
+}
+impl<I, T> IntoChunks<T> for I
+    where I: Iterator<Item = T> + Sized
+{
+    fn chunks<const C: usize>(self) -> Chunks<Self, T, C> where Self: Iterator<Item = T> + Sized {
+        Chunks { iter: self }
+    }
+}
+impl<I, T, const C: usize> Iterator for Chunks<I, T, C>
+    where
+        I: Iterator<Item = T>,
+        T: Sized,
+{
+    type Item = [T; C];
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            // Safety: This is safe because the thing we are claiming to have initialized
+            // is a bunch of MaybeUninits
+            let mut item: [MaybeUninit<T>; C] = MaybeUninit::uninit().assume_init();
+            for i in 0..C {
+                if let Some(t) = self.iter.next() {
+                    item[i].write(t);
+                } else {
+                    // Drop all previously iterated objects
+                    for (j, to_drop) in item.into_iter().enumerate() {
+                        to_drop.assume_init();
+                        if j >= i {
+                            break;
+                        }
+                    }
+                    return None;
+                }
+            }
+            // Can't transmute the array because Rust can't tell that MaybeUninit<T> and T
+            // have the same size because T is generic
+            let item_copy = std::mem::transmute_copy(&item);
+            std::mem::forget(item);
+            Some(item_copy)
+        }
     }
 }
