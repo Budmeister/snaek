@@ -47,6 +47,15 @@ impl From<CellState> for Fill {
         }
     }
 }
+impl From<()> for Fill {
+    fn from(_: ()) -> Self {
+        Self {
+            floor: None,
+            obj: None,
+            elev: None,
+        }
+    }
+}
 impl Fill {
     pub fn update(&mut self, other: Fill) {
         self.floor = other.floor.or(self.floor);
@@ -100,10 +109,11 @@ pub trait BoardArt {
     fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>);
     fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>);
     fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>);
+    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>);
     fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>);
     fn explosion(&mut self, center: impl Into<Coord>, fill: impl Into<Fill>);
 }
-impl BoardArt for Board {
+impl<const W: usize, const H: usize> BoardArt for Board<W, H> {
     fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
         line(self, from, to, fill);
     }
@@ -116,6 +126,10 @@ impl BoardArt for Board {
 
     fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
         circle(self, center, radius, fill);
+    }
+
+    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+        rect(self, from, to, fill);
     }
 
     fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>) {
@@ -136,7 +150,7 @@ impl BoardArt for Board {
     }
 }
 
-fn write_letter(grid: &CharGrid, x: usize, y: usize, board: &mut Board, fill: impl Into<Fill>, empty: impl Into<Fill>) {
+fn write_letter<const W: usize, const H: usize>(grid: &CharGrid, x: usize, y: usize, board: &mut Board<W, H>, fill: impl Into<Fill>, empty: impl Into<Fill>) {
     let (fill, empty) = (fill.into(), empty.into());
     for (dy, row) in grid.iter().enumerate() {
         for (dx, should_fill) in row.iter().enumerate() {
@@ -165,7 +179,7 @@ fn dist(from: Coord, to: Coord) -> usize {
     dist2.sqrt() as usize
 }
 
-fn line(board: &mut Board, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+fn line<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
     let (from, to) = (from.into(), to.into());
     let fill = fill.into();
     
@@ -176,7 +190,7 @@ fn line(board: &mut Board, from: impl Into<Coord>, to: impl Into<Coord>, fill: i
     }
 }
 
-fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
+fn circle<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
     let center = center.into();
     let fill = fill.into();
 
@@ -246,14 +260,33 @@ fn circle(board: &mut Board, center: impl Into<Coord>, radius: usize, fill: impl
     }
 }
 
-fn explosion(board: &mut Board, center: impl Into<Coord>, fill: impl Into<Fill>) {
+fn rect<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+    const fn minmax(a: usize, b: usize) -> (usize, usize) {
+        if a < b {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    }
+    let (from, to) = (from.into(), to.into());
+    let (x1, x2) = minmax(from.x, to.x);
+    let (y1, y2) = minmax(from.y, to.y);
+    let fill = fill.into();
+    for y in y1..y2 {
+        for x in x1..x2 {
+            board.pt((x, y), fill);
+        }
+    }
+}
+
+fn explosion<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, fill: impl Into<Fill>) {
     let (center, fill) = (center.into(), fill.into());
     for _ in 0..EXPLOSION_WALK_COUNT {
         walk(board, center, EXPLOSION_WALK_MAX_DIST, fill);
     }
 }
 
-fn walk(board: &mut Board, from: impl Into<Coord>, max_dist: usize, fill: impl Into<Fill>) {
+fn walk<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, max_dist: usize, fill: impl Into<Fill>) {
     let mut pos = from.into();
     let fill = fill.into();
     for _ in 0..max_dist {

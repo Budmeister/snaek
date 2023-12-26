@@ -3,7 +3,7 @@ use std::{ops::{Range, Deref, DerefMut}, mem::MaybeUninit};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
-use super::levels::SCORE_BANNER;
+use super::{levels::SCORE_BANNER, art::Fill};
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
@@ -60,8 +60,11 @@ impl Distribution<PowerupType> for Standard {
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub enum IndicatorType {
+    Empty,
     Explosion,
     Dirt,
+    MSPTNormal,
+    MSPTOver,
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
@@ -127,6 +130,12 @@ impl<const W: usize, const H: usize> Board<W, H> {
 
     pub fn inner_cells_horiz_mut(&mut self) -> impl Iterator<Item = &mut CellState> {
         board_ops::inner_cells_horiz_mut(self.0.deref_mut())
+    }
+
+    pub fn new_filled(fill: impl Into<Fill>) -> Self {
+        let mut cell = CellState { floor: CellFloor::Empty, obj: CellObject::None, elev: 0 };
+        cell.update(fill.into());
+        Self(Box::new([[cell; W]; H]))
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
@@ -397,6 +406,9 @@ impl Snake {
     }
 }
 
+pub const LOGIC_MAX_MSPT: u64 = 100;
+pub const DRAW_MAX_USPT: u128 = 1_000_000u128 / 60;
+
 pub struct GameState {
     pub current_level: usize,
     pub board: Board,
@@ -404,8 +416,6 @@ pub struct GameState {
     pub timer: usize,
     /// Time in frames until invincibility is gone
     pub invinc_time: usize,
-    /// Freeze after a powerup spawns
-    pub powerup_freeze: usize,
     pub failed: bool,
     /// The frame number from logic's perspective
     pub frame_num: usize,
@@ -420,6 +430,15 @@ pub struct GameState {
     pub lava_count: usize,
     pub turf_count: usize,
     pub seed_count: usize,
+
+    pub debug_screen: bool,
+    pub debug_info: DebugInfo,
+}
+
+#[derive(Default)]
+pub struct DebugInfo {
+    pub lock_uspt: u128,
+    pub proc_uspt: u128,
 }
 
 trait Boxed {

@@ -88,6 +88,7 @@ fn key_to_user_action(keycode: Keycode) -> Option<UserAction> {
         Keycode::D => Some(UserAction::Seed),
         Keycode::F => Some(UserAction::Restart),
         Keycode::S => Some(UserAction::Shop),
+        Keycode::F3 => Some(UserAction::Debug),
         _ => None,
     }
 }

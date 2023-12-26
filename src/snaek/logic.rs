@@ -16,6 +16,8 @@ use rand::{
     }
 };
 
+use crate::snaek::types::DebugInfo;
+
 use super::{
     types::{
         Board,
@@ -33,7 +35,7 @@ use super::{
         FOOD_AND_POWERUP_LIFETIME,
         B_WIDTH,
         board_ops,
-        B_HEIGHT,
+        B_HEIGHT, LOGIC_MAX_MSPT,
     },
     levels
 };
@@ -42,7 +44,6 @@ use super::art::BoardArt;
 
 pub const TIMER_RESET: usize = 50;
 pub const INVINC_TIME: usize = 100;
-pub const POWERUP_FREEZE_RESET: usize = 10;
 
 pub fn reset() -> GameState {
     println!("Level 1: {}", levels::LEVEL_NAMES[0]);
@@ -57,7 +58,6 @@ pub fn reset() -> GameState {
         snake,
         timer: 0,
         invinc_time: 0,
-        powerup_freeze: POWERUP_FREEZE_RESET,
         failed: false,
         frame_num: 0,
         water_pwrs: 0,
@@ -69,6 +69,8 @@ pub fn reset() -> GameState {
         lava_count: 0,
         turf_count: 0,
         seed_count: 0,
+        debug_screen: false,
+        debug_info: DebugInfo::default(),
     }
 }
 
@@ -83,7 +85,6 @@ fn next_level(s: &mut GameState) {
     
     s.snake = snake;
     s.timer = 0;
-    s.powerup_freeze = POWERUP_FREEZE_RESET;
     s.failed = false;
 }
 
@@ -106,8 +107,12 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
         loop {
             let start = Instant::now();
 
+            let processing_time;
             {
+                let lock_start = start.elapsed();
                 let mut s_w = s.write().unwrap();
+                let lock_gotten = start.elapsed();
+                let lock_time = lock_gotten - lock_start;
                 
                 let poisoned = handle_keys(&rx, &mut s_w);
                 if poisoned {
@@ -115,13 +120,14 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
                 }
 
                 advance_board(&mut s_w, &mut pool);
+
+                processing_time = start.elapsed();
+                s_w.debug_info.lock_uspt = lock_time.as_micros();
+                s_w.debug_info.proc_uspt = processing_time.as_micros();
             }
 
-            let duration = start.elapsed();
-
             // Write the duration to the file
-            writeln!(file, "{},", duration.as_millis()).unwrap();
-            if let Some(remaining) = Duration::from_millis(100).checked_sub(duration) {
+            if let Some(remaining) = Duration::from_millis(LOGIC_MAX_MSPT).checked_sub(processing_time) {
                 thread::sleep(remaining);
             } else {
                 thread::sleep(Duration::from_millis(1));
@@ -137,55 +143,59 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
         Ok(key) => {
             match key {
                 UserAction::Up => {
-                    if !s.failed && s.powerup_freeze == 0 {
+                    if !s.failed {
                         s.snake.point(Dir::Up)
                     }
                 }
                 UserAction::Left => {
-                    if !s.failed && s.powerup_freeze == 0 {
+                    if !s.failed {
                         s.snake.point(Dir::Left)
                     }
                 }
                 UserAction::Down => {
-                    if !s.failed && s.powerup_freeze == 0 {
+                    if !s.failed {
                         s.snake.point(Dir::Down)
                     }
                 }
                 UserAction::Right => {
-                    if !s.failed && s.powerup_freeze == 0 {
+                    if !s.failed {
                         s.snake.point(Dir::Right)
                     }
                 }
                 UserAction::Water => {
-                    if s.water_pwrs != 0 {
+                    if !s.failed && s.water_pwrs != 0 {
                         s.water_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellFloor::Water);
                         println!("Used water powerup, {} remaining", s.water_pwrs);
                     }
                 }
                 UserAction::Explosion => {
-                    if s.explo_pwrs != 0 {
+                    if !s.failed && s.explo_pwrs != 0 {
                         s.explo_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), (CellFloor::Empty, CellObject::None));
                         println!("Used explosion powerup, {} remaining", s.explo_pwrs);
                     }
                 }
                 UserAction::Turf => {
-                    if s.turf_pwrs != 0 {
+                    if !s.failed && s.turf_pwrs != 0 {
                         s.turf_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellFloor::Turf);
                         println!("Used turf powerup, {} remaining", s.turf_pwrs);
                     }
                 }
                 UserAction::Seed => {
-                    if s.seed_pwrs != 0 {
+                    if !s.failed && s.seed_pwrs != 0 {
                         s.seed_pwrs -= 1;
                         s.board.explosion(s.snake.head_pos(), CellFloor::Seed(MAX_WATER_DIST));
                         println!("Used seed powerup, {} remaining", s.seed_pwrs);
                     }
                 }
                 UserAction::Restart => next_level(s),
-                _ => return false,
+                UserAction::Debug => {
+                    s.debug_screen = !s.debug_screen;
+                }
+                UserAction::Shop => {}
+                UserAction::Quit => {}
             };
         }
         Err(TryRecvError::Empty) => (),
@@ -201,11 +211,6 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
 // Returns true if failed
 fn advance_board(s: &mut GameState, pool: &mut Pool) {
     if s.failed {
-        return;
-    }
-
-    if s.powerup_freeze != 0 {
-        s.powerup_freeze -= 1;
         return;
     }
 
@@ -721,4 +726,5 @@ pub enum UserAction {
     Shop,
     Restart,
     Quit,
+    Debug,
 }

@@ -12,8 +12,8 @@ pub static GRIDS: Lazy<HashMap<char, CharGrid>> = Lazy::new(|| PRINTABLE_CHARS
         .chars()
         .zip(CHAR_GRIDS.into_iter())
         .collect());
-static PRINTABLE_CHARS: &str = "abcdefghijklmnopqrstuvwxyz0123456789 :-(),";
-static CHAR_GRIDS: [CharGrid; 42] = {
+static PRINTABLE_CHARS: &str = "abcdefghijklmnopqrstuvwxyz0123456789 :-(),.";
+static CHAR_GRIDS: [CharGrid; 43] = {
     const X: bool = true;
     const O: bool = false;
     [
@@ -353,5 +353,13 @@ static CHAR_GRIDS: [CharGrid; 42] = {
             [O, X, O],
             [X, O, O],
         ],
+        // .
+        [
+            [O, O, O],
+            [O, O, O],
+            [O, O, O],
+            [O, O, O],
+            [O, X, O],
+        ]
     ]
 };

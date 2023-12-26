@@ -9,8 +9,6 @@ use std::{
         Instant
     },
     thread,
-    fs::OpenOptions,
-    io::Write
 };
 
 use super::{
@@ -24,8 +22,8 @@ use super::{
         SnakeColor,
         PowerupType,
         Coord,
-        B_HEIGHT, IndicatorType, Board
-    }, levels
+        B_HEIGHT, IndicatorType, Board, LOGIC_MAX_MSPT, DRAW_MAX_USPT
+    }, levels, art::BoardArt
 };
 
 use crate::sized_color_space;
@@ -53,12 +51,6 @@ pub trait Frontend {
 ///////////////////////////////////////////////////////////
 
 pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<UserAction>) {
-    // Open a file in append mode for the window loop timings
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open("window_loop_times.csv")
-        .unwrap();
 
     f.set_color(EMPTY_COLOR.into());
     f.clear();
@@ -81,18 +73,23 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
             }
         }
 
+        let lock_time;
         {
+            let lock_start = start.elapsed();
             let s_r = s.read().unwrap();
-            draw_board(&mut f, &s_r, &v);
+            let lock_gotten = start.elapsed();
+            lock_time = lock_gotten - lock_start;
+            draw_board(&mut f, &s_r, &mut v);
         }
 
         f.present();
 
-        let duration = start.elapsed();
-        // Write the duration to the file
-        writeln!(file, "{},", duration.as_millis()).unwrap();
+        let display_time = start.elapsed();
+        // Write the duration to debug info
+        v.debug_info.lock_uspt = lock_time.as_micros();
+        v.debug_info.disp_uspt = display_time.as_micros();
 
-        if let Some(remaining) = Duration::new(0, 1_000_000u32 / 60).checked_sub(duration) {
+        if let Some(remaining) = Duration::new(0, 1000 * DRAW_MAX_USPT as u32).checked_sub(display_time) {
             thread::sleep(remaining);
         } else {
             thread::sleep(Duration::from_millis(1));
@@ -107,7 +104,7 @@ use crate::snaek::types::MAX_WATER_DIST;
 /// The width of a single cell in pixels
 const C_SIZE: usize = 10;
 
-pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &ViewState) {
+pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &mut ViewState) {
     f.set_color(EMPTY_COLOR.into());
     f.clear();
     let (w, h) = f.screen_size();
@@ -150,26 +147,96 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &ViewState) {
     let yrange = ystart..ystop;
 
     // Start drawing at the top and left -- this also means we have room for the scoreboard
+    // Draw Board
     for (y, row) in s.board[yrange].iter().enumerate() {
         for (x, cell) in row[xrange.clone()].iter().enumerate() {
             let rect = ((x * C_SIZE) as i32, (y * C_SIZE) as i32, C_SIZE as u32, C_SIZE as u32);
-            let color = get_cell_color(*cell, s);
-            f.set_color(color.into());
-            f.draw_rect(rect.into());
+            if let Some(color) = get_cell_color(*cell, s) {
+                f.set_color(color.into());
+                f.draw_rect(rect.into());
+            }
         }
     }
 
+    // Draw scoreboard
     for (y, row) in v.scoreboard[..].iter().enumerate() {
         for (x, cell) in row.iter().enumerate() {
             let rect = ((x * sb_csize + sb_x) as i32, (y * sb_csize) as i32, (sb_csize+1) as u32, (sb_csize+1) as u32);
-            let color = get_cell_color(*cell, s);
-            f.set_color(color.into());
-            f.draw_rect(rect.into());
+            if let Some(color) = get_cell_color(*cell, s) {
+                f.set_color(color.into());
+                f.draw_rect(rect.into());
+            }
+        }
+    }
+
+    // Draw debug screen
+    if s.debug_screen {
+        ////////////////////////////////////
+        // Set debug screen
+        v.debug_screen.rect((0,0), (DS_WIDTH, DS_HEIGHT), CellFloor::Indicator(IndicatorType::Empty));
+
+        const MSPT_NORMAL: CellFloor = CellFloor::Indicator(IndicatorType::MSPTNormal);
+        const MSPT_OVER: CellFloor = CellFloor::Indicator(IndicatorType::MSPTOver);
+
+        let mut lines = vec![(String::from("MSPT:"), MSPT_NORMAL)];
+        // Game debug
+        {
+            let lock_uspt = s.debug_info.lock_uspt;
+            let lock_mspt = lock_uspt / 1000;
+            let lock_us_only = lock_uspt - lock_mspt * 1000;
+            let proc_uspt = s.debug_info.proc_uspt;
+            let proc_mspt = proc_uspt / 1000;
+            let proc_us_only = proc_uspt - proc_mspt * 1000;
+            let cell = if ((lock_uspt + proc_uspt) / 1000) as u64 >= LOGIC_MAX_MSPT { MSPT_OVER } else { MSPT_NORMAL };
+            lines.push((format!("Ll: {}.{}", lock_mspt, lock_us_only / 100), cell));
+            lines.push((format!("Lp: {}.{}", proc_mspt, proc_us_only / 100), cell));
+            lines.push((format!("LM: {}.0", LOGIC_MAX_MSPT), cell));
+        };
+
+        // Draw debug
+        {
+            let lock_uspt = v.debug_info.lock_uspt;
+            let lock_mspt = lock_uspt / 1000;
+            let lock_us_only = lock_uspt - lock_mspt * 1000;
+            let disp_uspt = v.debug_info.disp_uspt;
+            let disp_mspt = disp_uspt / 1000;
+            let disp_us_only = disp_uspt - disp_mspt * 1000;
+            let max_uspt = DRAW_MAX_USPT;
+            let max_mspt = max_uspt / 1000;
+            let max_us_only = max_uspt - max_mspt * 1000;
+            let cell = if lock_uspt + disp_uspt >= DRAW_MAX_USPT { MSPT_OVER } else { MSPT_NORMAL };
+            lines.push((format!("Dl: {}.{}", lock_mspt, lock_us_only / 100), cell));
+            lines.push((format!("Dd: {}.{}", disp_mspt, disp_us_only / 100), cell));
+            lines.push((format!("DM: {}.{}", max_mspt, max_us_only / 100), cell));
+        };
+
+        for (i, (line, fill)) in lines.into_iter().enumerate() {
+            let y = i * 6 + 1;
+            let x = 1;
+            v.debug_screen.text(&line, (x, y), fill, ());
+        }
+
+
+        
+        ////////////////////////////////////
+        // Draw debug screen
+        let ds_csize = 3;
+        // let ds_x = (visible_w * C_SIZE).saturating_sub(100 * ds_csize);
+        let ds_x = sb_x;
+        let ds_y = (visible_h * C_SIZE).saturating_sub(100 * ds_csize);
+        for (y, row) in v.debug_screen[..].iter().enumerate() {
+            for (x, cell) in row.iter().enumerate() {
+                let rect = ((x * ds_csize + ds_x) as i32, (y * ds_csize + ds_y) as i32, (ds_csize+1) as u32, (ds_csize+1) as u32);
+                if let Some(color) = get_cell_color(*cell, s) {
+                    f.set_color(color.into());
+                    f.draw_rect(rect.into());
+                }
+            }
         }
     }
 }
 
-fn get_cell_color(cell: CellState, s: &GameState) -> Color {
+fn get_cell_color(cell: CellState, s: &GameState) -> Option<Color> {
     if cell.obj == CellObject::None || 
             (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0) ||
             (cell.obj.is_super_powerup() && s.frame_num % 2 == 0)
@@ -180,48 +247,63 @@ fn get_cell_color(cell: CellState, s: &GameState) -> Color {
     }
 }
 
-fn get_floor_color(floor: CellFloor, elev: u8) -> Color {
+fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
     match floor {
-        CellFloor::Empty => TERRAIN_COLORS[elev as usize],
-        CellFloor::Water => WATER_COLOR,
-        CellFloor::Lava => LAVA_COLOR,
-        CellFloor::Turf => TURF_COLOR,
-        CellFloor::Seed(dist) => SEED_COLORS[dist.min(MAX_WATER_DIST - 1)],
-        CellFloor::DeadSeed => DEAD_SEED_COLOR,
-        CellFloor::Indicator(IndicatorType::Explosion) => EXPLOSIVE_COLOR,
-        CellFloor::Indicator(IndicatorType::Dirt) => DIRT_COLOR,
+        CellFloor::Empty => Some(TERRAIN_COLORS[elev as usize]),
+        CellFloor::Water => Some(WATER_COLOR),
+        CellFloor::Lava => Some(LAVA_COLOR),
+        CellFloor::Turf => Some(TURF_COLOR),
+        CellFloor::Seed(dist) => Some(SEED_COLORS[dist.min(MAX_WATER_DIST - 1)]),
+        CellFloor::DeadSeed => Some(DEAD_SEED_COLOR),
+        CellFloor::Indicator(IndicatorType::Empty) => None,
+        CellFloor::Indicator(IndicatorType::Explosion) => Some(EXPLOSIVE_COLOR),
+        CellFloor::Indicator(IndicatorType::Dirt) => Some(DIRT_COLOR),
+        CellFloor::Indicator(IndicatorType::MSPTNormal) => Some(MSPT_NORMAL_COLOR),
+        CellFloor::Indicator(IndicatorType::MSPTOver) => Some(MSPT_OVER_COLOR),
     }
 }
 
-fn get_object_color(obj: CellObject, s: &GameState) -> Color {
+fn get_object_color(obj: CellObject, s: &GameState) -> Option<Color> {
     match obj {
-        CellObject::None => EMPTY_COLOR,
-        CellObject::Wall => WALL_COLOR,
-        CellObject::Snake(SnakeColor::DarkRed, _) => SNAKE_COLOR_DARK_RED,
-        CellObject::Snake(SnakeColor::LightRed, _) => SNAKE_COLOR_LIGHT_RED,
-        CellObject::Snake(SnakeColor::Head, _) => if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD },
-        CellObject::Food(..) => FOOD_COLOR,
+        CellObject::None => Some(EMPTY_COLOR),
+        CellObject::Wall => Some(WALL_COLOR),
+        CellObject::Snake(SnakeColor::DarkRed, _) => Some(SNAKE_COLOR_DARK_RED),
+        CellObject::Snake(SnakeColor::LightRed, _) => Some(SNAKE_COLOR_LIGHT_RED),
+        CellObject::Snake(SnakeColor::Head, _) => Some(if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD }),
+        CellObject::Food(..) => Some(FOOD_COLOR),
         CellObject::Powerup(pwr, ..) | CellObject::SuperPowerup(pwr, ..) => match pwr {
-            PowerupType::Water => WATER_COLOR,
-            PowerupType::Explosive => EXPLOSIVE_COLOR,
-            PowerupType::Turf => TURF_COLOR,
-            PowerupType::Seed => SEED_COLOR,
-            PowerupType::Invincibility => INVINC_COLOR,
+            PowerupType::Water => Some(WATER_COLOR),
+            PowerupType::Explosive => Some(EXPLOSIVE_COLOR),
+            PowerupType::Turf => Some(TURF_COLOR),
+            PowerupType::Seed => Some(SEED_COLOR),
+            PowerupType::Invincibility => Some(INVINC_COLOR),
         }
-        CellObject::Border => BORDER_COLOR,
+        CellObject::Border => Some(BORDER_COLOR),
     }
 }
 
 pub const SB_WIDTH: usize = 25;
 pub const SB_HEIGHT: usize = 100;
+pub const DS_WIDTH: usize = 100;
+pub const DS_HEIGHT: usize = 100;
 
 pub struct ViewState {
     pub scoreboard: Board<SB_WIDTH, SB_HEIGHT>,
+    pub debug_screen: Board<DS_WIDTH, DS_HEIGHT>,
+    pub debug_info: ViewDebugInfo,
+}
+
+#[derive(Default)]
+pub struct ViewDebugInfo {
+    pub lock_uspt: u128,
+    pub disp_uspt: u128,
 }
 
 fn reset_view_state() -> ViewState {
     ViewState {
         scoreboard: Board::<SB_WIDTH, SB_HEIGHT>::from_bytes(levels::SCORE_BANNER_VERT),
+        debug_screen: Board::<DS_WIDTH, DS_HEIGHT>::new_filled(CellFloor::Indicator(IndicatorType::Empty)),
+        debug_info: ViewDebugInfo::default(),
     }
 }
 
@@ -277,6 +359,12 @@ sized_color_space!{
     NUM_TERRAIN_COLORS = 256
 }
 
+// Display text colors
+const MSPT_NORMAL_COLOR: Color = as_color!("#b7eb34");
+const MSPT_OVER_COLOR: Color = as_color!("#eb4034");
+
+
+// Macros for this module
 mod macros {
     #[macro_export]
     macro_rules! sized_color_space {
