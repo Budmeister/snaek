@@ -75,7 +75,11 @@ impl CellState {
     pub fn update(&mut self, fill: impl Into<Fill>) {
         let fill = fill.into();
         if let Some(floor) = fill.floor {
-            self.floor = floor;
+            match (&mut self.floor, floor) {
+                (CellFloor::Water { depth: receive }, CellFloor::Water { depth: give }) |
+                (CellFloor::Lava { depth: receive }, CellFloor::Lava { depth: give }) => *receive += give,
+                (receive, give) => *receive = give,
+            }
         }
         if let Some(obj) = fill.obj {
             self.obj = obj;
@@ -93,6 +97,26 @@ impl CellState {
         }
         if let Some(obj) = other.obj {
             if self.obj != obj {
+                return false;
+            }
+        }
+        if let Some(elev) = other.elev {
+            if self.elev != elev {
+                return false;
+            }
+        }
+        true
+    }
+    pub fn vmatches(&self, other: impl Into<Fill>) -> bool {
+        use std::mem::discriminant as variant;
+        let other = other.into();
+        if let Some(floor) = other.floor {
+            if variant(&self.floor) != variant(&floor) {
+                return false;
+            }
+        }
+        if let Some(obj) = other.obj {
+            if variant(&self.obj) != variant(&obj) {
                 return false;
             }
         }
@@ -290,9 +314,9 @@ fn walk<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into
     let mut pos = from.into();
     let fill = fill.into();
     for _ in 0..max_dist {
-        if !board.cell_at(pos).matches(fill) {
+        if !board.cell_at(pos).vmatches(fill) {
             // Do not overwrite a border
-            if !board.cell_at(pos).matches(CellObject::Border) {
+            if !board.cell_at(pos).vmatches(CellObject::Border) {
                 board.pt(pos, fill);
             }
             break;

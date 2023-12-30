@@ -2,9 +2,9 @@
 use std::{
     sync::{Arc, RwLock, mpsc::{Receiver, TryRecvError}},
     thread,
-    fs::OpenOptions,
-    io::Write,
     time::{Duration, Instant},
+    hash::{Hash, Hasher},
+    collections::hash_map::DefaultHasher,
 };
 use scoped_threadpool::Pool;
 
@@ -13,7 +13,7 @@ use rand::{
     distributions::{
         WeightedIndex,
         Distribution
-    }
+    }, SeedableRng,
 };
 
 use crate::snaek::types::DebugInfo;
@@ -30,7 +30,6 @@ use super::{
         PowerupType,
         Coord,
         MAX_WATER_DIST,
-        G_HEIGHT,
         SnakeColor,
         FOOD_AND_POWERUP_LIFETIME,
         B_WIDTH,
@@ -47,8 +46,9 @@ pub const INVINC_TIME: usize = 100;
 
 pub fn reset() -> GameState {
     println!("Level 1: {}", levels::LEVEL_NAMES[0]);
-    let board = Board::from_bytes(levels::LEVELS[0]);
+    let mut board = Board::from_bytes(levels::LEVELS[0]);
     let snake = Snake::new((5, 5), Dir::Right, 5);
+    _place_debug(&mut board);
 
     // _place_debug(&mut board);
 
@@ -71,6 +71,7 @@ pub fn reset() -> GameState {
         seed_count: 0,
         debug_screen: false,
         debug_info: DebugInfo::default(),
+        salt: rand::thread_rng().gen(),
     }
 }
 
@@ -94,13 +95,6 @@ const NUM_BOARD_ADVANCE_THREADS: u32 = 4;
 pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -> thread::JoinHandle<()> {
     // Poll the Lazy
     crate::text::GRIDS.len();
-
-    // Open a file in append mode
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open("frame_times.csv")
-        .unwrap();
 
     thread::spawn(move || {
         let mut pool = Pool::new(NUM_BOARD_ADVANCE_THREADS);
@@ -165,7 +159,7 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
                 UserAction::Water => {
                     if !s.failed && s.water_pwrs != 0 {
                         s.water_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), CellFloor::Water);
+                        s.board.explosion(s.snake.head_pos(), CellFloor::Water { depth: 1 });
                         println!("Used water powerup, {} remaining", s.water_pwrs);
                     }
                 }
@@ -237,20 +231,22 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
         let end = usize::min(start + size, s.board.len() - 1);
         let old_slice = &s.board[start-1..end+1];
 
-        slices.push((old_slice, new_slice));
+        slices.push((old_slice, new_slice, start));
         board_new_slice = next;
         slices_left -= 1;
         start = end;
     }
     pool.scoped(|scope| {
-        for (old_slice, new_slice) in slices {
-            scope.execute(|| {
+        for (old_slice, new_slice, start_at_y) in slices {
+            scope.execute({
+            let s = &s;
+            move || {
                 let iter = board_ops::surrounding(old_slice)
-                        .zip(board_ops::inner_cells_horiz_mut(new_slice));
-                for ((old_cell, old_surrounding), new_cell) in iter {
-                    random_tick(old_cell, old_surrounding, new_cell);
+                        .zip(board_ops::inner_cells_horiz_mut_enumerate(new_slice, start_at_y));
+                for ((old_cell, old_surrounding), (coord, new_cell)) in iter {
+                    tick(old_cell, old_surrounding, new_cell, coord, s);
                 }
-            });
+            }});
         }
     });
     s.board = board_new;
@@ -319,7 +315,7 @@ fn choose_powerup_type(s: &GameState) -> PowerupType {
 fn handle_hit(cell: CellState, s: &mut GameState) {
     // Handle failing separately
     match cell {
-        CellState { floor: CellFloor::Lava, .. } |
+        CellState { floor: CellFloor::Lava { .. }, .. } |
         CellState { obj: CellObject::Wall, .. } => {
             if s.invinc_time == 0 {
                 fail(s, "Hit wall or lava!");
@@ -359,14 +355,14 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
             }
         }
         // Fail conditions - handled above - put last so that you can still get powerup on lava
-        CellState { floor: CellFloor::Lava, .. } |
+        CellState { floor: CellFloor::Lava { .. }, .. } |
         CellState { obj: CellObject::Wall | CellObject::Border, .. } => {}
     }
     // Update counts
     match cell.floor {
         CellFloor::Empty => s.empty_count += 1,
-        CellFloor::Water => s.water_count += 1,
-        CellFloor::Lava => s.lava_count += 1,
+        CellFloor::Water { .. } => s.water_count += 1,
+        CellFloor::Lava { .. } => s.lava_count += 1,
         CellFloor::Turf => s.turf_count += 1,
         CellFloor::Seed(_) => s.seed_count += 1,
         CellFloor::DeadSeed | CellFloor::Indicator(..) => {},
@@ -387,19 +383,18 @@ macro_rules! count_matches {
     }};
 }
 
-pub fn random_tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_cell: &mut CellState) {
-    random_tick_floor(old_cell, &old_surrounding, new_cell);
-    random_tick_object(old_cell, &old_surrounding, new_cell);
+pub fn tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_cell: &mut CellState, coord: Coord, s: &GameState) {
+    tick_floor(old_cell, &old_surrounding, new_cell, coord, s);
+    tick_object(old_cell, &old_surrounding, new_cell, coord, s);
+    liquid_flow(old_cell, &old_surrounding, new_cell, coord, s);
 }
 
-fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState) {
+fn tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState, _coord: Coord, _s: &GameState) {
     match old_cell.floor {
         CellFloor::Turf => {}
         CellFloor::Empty | CellFloor::Indicator(..) => {
-            let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
+            let (s,) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Seed(_));
             let weights = [
-                1_000 * w + 2,      // Water spreads to this block
-                2_000 * l + 2,      // Lava spreads to this block
                 3_00 * s + 1,       // Seed spreads to this block
                 2_000_000           // Nothing happens
             ];
@@ -407,57 +402,19 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 
             let mut rng = rand::thread_rng();
             match dist.sample(&mut rng) {
-                0 => new_cell.update((CellFloor::Water, CellObject::None )),
-                1 => new_cell.update((CellFloor::Lava, CellObject::None )),
                 2 => new_cell.update(CellFloor::Seed(0)),
                 3 => {}
                 _ => {}
             }
         }
-        CellFloor::Water => {
-            let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
-            let weights = [
-                3_000 * l,          // This block turns to obsidian
-                1_500 * s,          // Seed spreads to this block
-                1,                  // This block dries up
-                10_000 * w + 3_500  // Nothing happens
-            ];
-            let dist = WeightedIndex::new(&weights).unwrap();
-
-            let mut rng = rand::thread_rng();
-            match dist.sample(&mut rng) {
-                0 => new_cell.update((CellFloor::Empty, CellObject::Wall)),
-                1 => new_cell.update(CellFloor::Seed(0)),
-                2 => new_cell.update(CellFloor::Empty),
-                3 => {}
-                _ => {}
-            }
+        CellFloor::Water { .. } => {
         }
-        CellFloor::Lava => {
-            let (w, l) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava);
-            let mut rng = rand::thread_rng();
-            let num = rng.gen_range(0..20_000_000usize);
-            let weights = [
-                300 * w,                        // This block turns to obsidian
-                30,                             // Nothing happens
-                usize::from(l == 8 && num == 0) // Super powerup spawns
-            ];
-            let dist = WeightedIndex::new(&weights).unwrap();
-
-            match dist.sample(&mut rng) {
-                0 => new_cell.update((CellFloor::Empty, CellObject::Wall)),
-                1 => {},
-                2 => new_cell.update((CellFloor::Turf, CellObject::SuperPowerup(rng.gen(), FOOD_AND_POWERUP_LIFETIME))),
-                _ => {}
-            }
+        CellFloor::Lava { .. } => {
         }
         CellFloor::Seed(dist) => {
-            let (w, l) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava);
             let mut rng = rand::thread_rng();
             let dist_inv = MAX_WATER_DIST.saturating_sub(dist);
             let weights = [
-                100 * w,        // Water spreads to this block
-                700 * l,        // Lava spreads to this block
                 2 * dist,       // This seed dies
                 2 * dist_inv,   // This seed spawns food
                 700             // Nothing happens
@@ -466,8 +423,6 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 
             let num = distr.sample(&mut rng);
             match num {
-                0 => new_cell.update(CellFloor::Water),
-                1 => new_cell.update(CellFloor::Lava),
                 2 => new_cell.update((CellFloor::DeadSeed, CellObject::None)),
                 3 => new_cell.update(CellObject::Food(FOOD_AND_POWERUP_LIFETIME)),
                 4 => {}
@@ -479,7 +434,7 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
                     .iter()
                     .filter_map(|x| match x.floor {
                         CellFloor::Seed(dist) => Some(dist),
-                        CellFloor::Water => Some(0),
+                        CellFloor::Water { .. } => Some(0),
                         _ => None,
                     })
                     .min()
@@ -488,11 +443,9 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
             }
         }
         CellFloor::DeadSeed => {
-            let (w, l, s) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Water, CellFloor::Lava, CellFloor::Seed(_));
+            let (s,) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Seed(_));
             let mut rng = rand::thread_rng();
             let weights = [
-                1_000 * w,  // Water spreads to this block
-                7_000 * l,  // Lava spreads to this block
                 3 * s,      // Seed spreads to this block
                 1,          // This dead seed despawns
                 3_500       // Nothing happens
@@ -501,8 +454,6 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 
             let num = distr.sample(&mut rng);
             match num {
-                0 => new_cell.update(CellFloor::Water),
-                1 => new_cell.update(CellFloor::Lava),
                 2 => new_cell.update(CellFloor::Seed(0)),
                 3 => new_cell.update(CellFloor::Empty),
                 4 => {}
@@ -513,7 +464,7 @@ fn random_tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], ne
 }
 
 
-fn random_tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cell: &mut CellState) {
+fn tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cell: &mut CellState, _coord: Coord, _s: &GameState) {
     match old_cell.obj {
         CellObject::None => {}
         CellObject::Wall => {} // Conversion to water or lava is handled by CellFloor::Empty above
@@ -551,6 +502,122 @@ fn random_tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], 
         }
         CellObject::Border => {}
     }
+}
+
+const SURROUNDING_COORDS: [(isize, isize); 8] = [
+    (-1, -1), ( 0, -1), ( 1, -1),
+    (-1,  0),           ( 1,  0),
+    ( 1, -1), ( 0,  1), ( 1,  1),
+];
+
+fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState, coord: Coord, s: &GameState) {
+    // To give liquid
+    // 1. For this cell, create a rng seeded with the hash of (coord, frame num, salt). 
+    // 2. Generate a number from 1-8
+    // 3. That number is the index of the surrounding cell that receives the liquid, if it can. Only if it can, then
+    //    decrease liquid in this cell by one.
+    // 
+    // To receive liquid
+    // 1. For each surrounding cell, create a rng based on the info for that cell
+    // 2. Figure out if that cell would have given liquid to this cell
+    // 3. Count up all the liquid gained
+
+    // Giving takes place before receiving
+    
+    if !can_participate_in_liquid_flow(old_cell) {
+        return;
+    }
+
+    // Give liquid
+    let mut floor = old_cell.floor; // make mutable copy
+    if let CellFloor::Water { depth } | CellFloor::Lava { depth } = &mut floor {
+        let mut self_rng = get_local_rng(coord, s);
+        let to = self_rng.gen_range(0..8usize);
+        let to = old_surrounding[to];
+        if can_liquid_flow(to, old_cell) {
+            // We can give one away, so minus one
+            *depth -= 1;
+        }
+    }
+
+    // 0 1 2      7 6 5
+    // 3   4  =>  4   3
+    // 5 6 7      2 1 0
+
+    // To reverse, just do 7 - i
+
+    // Receive liquid
+    let mut water: u8 = 0;
+    let mut lava: u8 = 0;
+    let Coord { x, y } = coord;
+
+    for (i, (from, coord)) in old_surrounding
+            .iter()
+            .zip(SURROUNDING_COORDS.map(|(dx, dy)| {
+                Coord { x: (x as isize + dx) as usize, y: (y as isize + dy) as usize }
+            }))
+            .enumerate()
+    {
+        if !can_liquid_flow(old_cell, from) {
+            continue;
+        }
+        if let (liquid, _, CellFloor::Water { .. }) | (_, liquid, CellFloor::Lava { .. }) = (&mut water, &mut lava, from.floor) {
+            let mut giver_rng = get_local_rng(coord, s);
+            let to_receive = giver_rng.gen_range(0..8usize);
+            if to_receive == 7 - i {
+                *liquid += 1;
+            }
+        }
+    }
+
+    if let (liquid, _, CellFloor::Water { depth }) | (_, liquid, CellFloor::Lava { depth }) = (&mut water, &mut lava, floor) {
+        *liquid = liquid.saturating_add(depth)
+    }
+
+    let elev;
+    match water.cmp(&lava) {
+        std::cmp::Ordering::Less => {
+            elev = old_cell.elev.saturating_add(water);
+            floor = CellFloor::Lava { depth: lava - water };
+        },
+        std::cmp::Ordering::Equal => {
+            elev = old_cell.elev.saturating_add(water);
+            // If this cell was water or lava, it is now empty
+            // otherwise, it just keeps its state
+            if let CellFloor::Water { .. } | CellFloor::Lava { .. } = old_cell.floor {
+                floor = CellFloor::Empty;
+            } else {
+                floor = old_cell.floor;
+            }
+        },
+        std::cmp::Ordering::Greater => {
+            elev = old_cell.elev.saturating_add(lava);
+            floor = CellFloor::Water { depth: water - lava };
+        },
+    }
+
+    *new_cell = CellState { floor, obj: old_cell.obj, elev };
+}
+
+#[inline(always)]
+fn can_participate_in_liquid_flow(cell: &CellState) -> bool {
+    cell.floor != CellFloor::Turf && cell.obj != CellObject::Border
+}
+
+#[inline(always)]
+fn can_liquid_flow(to: &CellState, from: &CellState) -> bool {
+    if !can_participate_in_liquid_flow(to) || !can_participate_in_liquid_flow(from) {
+        return false;
+    }
+    to.roof() < from.roof()
+}
+
+#[inline(always)]
+fn get_local_rng(coord: Coord, s: &GameState) -> impl Rng {
+    let mut hasher = DefaultHasher::new();
+    (coord, s.frame_num, s.salt).hash(&mut hasher);
+    let hash = hasher.finish();
+    rand::rngs::StdRng::seed_from_u64(hash)
 }
 
 /*
@@ -686,25 +753,27 @@ pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mu
 */
 
 fn _place_debug(board: &mut Board) {
-    for i in 2..=10 {
-        board.pt((5 * i, 10), CellFloor::Empty);
-        board.pt((5 * i, 15), CellFloor::Lava);
-        board.pt((5 * i, 20), CellFloor::Water);
-        board.pt((5 * i, 25), CellFloor::Turf);
-        board.pt((5 * i, 30), CellFloor::Seed(MAX_WATER_DIST));
-    }
+    board.pt((10, 10), CellFloor::Water { depth: 200 });
+
+    // for i in 2..=10 {
+    //     board.pt((5 * i, 10), CellFloor::Empty);
+    //     board.pt((5 * i, 15), CellFloor::Lava { depth: 1 });
+    //     board.pt((5 * i, 20), CellFloor::Water { depth: 1 });
+    //     board.pt((5 * i, 25), CellFloor::Turf);
+    //     board.pt((5 * i, 30), CellFloor::Seed(MAX_WATER_DIST));
+    // }
     
-    for i in 2..=6 {
-        board.pt((10, 5 * i), CellObject::Border);
-        board.pt((15, 5 * i), CellObject::Food(usize::MAX));
-        board.pt((20, 5 * i), CellObject::None);
-        board.pt((25, 5 * i), CellObject::Wall);
-        board.pt((30, 5 * i), CellObject::Powerup(PowerupType::Water, usize::MAX));
-        board.pt((35, 5 * i), CellObject::Powerup(PowerupType::Explosive, usize::MAX));
-        board.pt((40, 5 * i), CellObject::Powerup(PowerupType::Turf, usize::MAX));
-        board.pt((45, 5 * i), CellObject::Powerup(PowerupType::Invincibility, usize::MAX));
-        board.pt((50, 5 * i), CellObject::Powerup(PowerupType::Seed, usize::MAX));
-    }
+    // for i in 2..=6 {
+    //     board.pt((10, 5 * i), CellObject::Border);
+    //     board.pt((15, 5 * i), CellObject::Food(usize::MAX));
+    //     board.pt((20, 5 * i), CellObject::None);
+    //     board.pt((25, 5 * i), CellObject::Wall);
+    //     board.pt((30, 5 * i), CellObject::Powerup(PowerupType::Water, usize::MAX));
+    //     board.pt((35, 5 * i), CellObject::Powerup(PowerupType::Explosive, usize::MAX));
+    //     board.pt((40, 5 * i), CellObject::Powerup(PowerupType::Turf, usize::MAX));
+    //     board.pt((45, 5 * i), CellObject::Powerup(PowerupType::Invincibility, usize::MAX));
+    //     board.pt((50, 5 * i), CellObject::Powerup(PowerupType::Seed, usize::MAX));
+    // }
 }
 
 fn fail(s: &mut GameState, message: &str) {

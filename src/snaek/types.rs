@@ -1,5 +1,5 @@
 
-use std::{ops::{Range, Deref, DerefMut}, mem::MaybeUninit};
+use std::{ops::{Range, Deref, DerefMut, Add}, mem::MaybeUninit};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
@@ -9,13 +9,22 @@ use super::{levels::SCORE_BANNER, art::Fill};
 pub enum CellFloor {
     #[default]
     Empty,
-    Water,
-    Lava,
+    Water { depth: u8 },
+    Lava { depth: u8 },
     Turf,
     /// Holds distance from water
     Seed(usize),
     DeadSeed,
     Indicator(IndicatorType),
+}
+impl CellFloor {
+    #[inline(always)]
+    pub fn height(&self) -> u8 {
+        match self {
+            CellFloor::Empty | CellFloor::Turf | CellFloor::Seed(..) | CellFloor::DeadSeed | CellFloor::Indicator(..) => 0,
+            CellFloor::Water { depth } | CellFloor::Lava { depth } => *depth,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -82,6 +91,12 @@ pub struct CellState {
     pub floor: CellFloor,
     pub obj: CellObject,
     pub elev: u8,
+}
+impl CellState {
+    #[inline(always)]
+    pub fn roof(&self) -> u8 {
+        self.elev.saturating_add(self.floor.height())
+    }
 }
 
 /// The width of the board in cells. Must be less than `isize::MAX`
@@ -150,8 +165,8 @@ impl<const W: usize, const H: usize> Board<W, H> {
             if y < H {
                 board_vec[y][x] = match floor {
                     0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev },
-                    0x1 => CellState { floor: CellFloor::Water, obj: CellObject::None, elev },
-                    0x2 => CellState { floor: CellFloor::Lava, obj: CellObject::None, elev },
+                    0x1 => CellState { floor: CellFloor::Water { depth: 1 }, obj: CellObject::None, elev },
+                    0x2 => CellState { floor: CellFloor::Lava { depth: 1 }, obj: CellObject::None, elev },
                     0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None, elev },
                     0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
                     0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
@@ -275,6 +290,17 @@ pub mod board_ops {
             .iter_mut()
             .flat_map(|row| row[1..W - 1].iter_mut())
     }
+
+    pub fn inner_cells_horiz_mut_enumerate<T, const W: usize>(slice: &mut [[T; W]], start_at_y: usize) -> impl Iterator<Item = (Coord, &mut T)> {
+        slice
+            .iter_mut()
+            .enumerate()
+            .flat_map(move |(y, row)| row[1..W - 1]
+                .iter_mut()
+                .enumerate()
+                .map(move |(x, cell)| (Coord { x, y: y + start_at_y }, cell))
+            )
+    }
 }
 
 
@@ -296,7 +322,7 @@ impl Coord {
             y: rand::thread_rng().gen_range(y_range),
         }
     }
-    pub fn add(self, rhs: Dir) -> Option<Coord> {
+    pub fn add_checked(self, rhs: Dir) -> Option<Coord> {
         let (dx, dy) = rhs.get_diff();
         let (new_x, new_y) = (self.x as isize + dx, self.y as isize + dy);
 
@@ -308,7 +334,7 @@ impl Coord {
             None
         }
     }
-    pub fn sub(self, rhs: Dir) -> Option<Coord> {
+    pub fn sub_checked(self, rhs: Dir) -> Option<Coord> {
         let (dx, dy) = rhs.get_diff();
         let (new_x, new_y) = (self.x as isize - dx, self.y as isize - dy);
 
@@ -351,6 +377,17 @@ impl Distribution<Coord> for Standard {
             x: rng.gen_range(1..(B_WIDTH-1)),
             y: rng.gen_range(1..(G_HEIGHT-1)),
         }
+    }
+}
+impl Add<Dir> for Coord {
+    type Output = Coord;
+    /// This can be dangerous if you could have overflows
+    #[inline(always)]
+    fn add(self, rhs: Dir) -> Self::Output {
+        let (dx, dy) = rhs.get_diff();
+        let (new_x, new_y) = (self.x as isize + dx, self.y as isize + dy);
+
+        Coord { x: new_x as usize, y: new_y as usize }
     }
 }
 
@@ -433,6 +470,8 @@ pub struct GameState {
 
     pub debug_screen: bool,
     pub debug_info: DebugInfo,
+
+    pub salt: u32,
 }
 
 #[derive(Default)]

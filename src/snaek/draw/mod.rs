@@ -250,8 +250,8 @@ fn get_cell_color(cell: CellState, s: &GameState) -> Option<Color> {
 fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
     match floor {
         CellFloor::Empty => Some(TERRAIN_COLORS[elev as usize]),
-        CellFloor::Water => Some(WATER_COLOR),
-        CellFloor::Lava => Some(LAVA_COLOR),
+        CellFloor::Water { .. } => Some(WATER_COLOR),
+        CellFloor::Lava { .. } => Some(LAVA_COLOR),
         CellFloor::Turf => Some(TURF_COLOR),
         CellFloor::Seed(dist) => Some(SEED_COLORS[dist.min(MAX_WATER_DIST - 1)]),
         CellFloor::DeadSeed => Some(DEAD_SEED_COLOR),
@@ -346,15 +346,22 @@ const DIRT_COLOR: Color = as_color!("#422417");
 
 
 // Terrain colors
+// sized_color_space!{
+//     TERRAIN_COLORS = [
+//         ("#000000", 0.0),
+//         ("#008d71", 0.45),
+//         ("#7b3c02", 0.56),
+//         ("#bab783", 0.58),
+//         ("#007103", 0.6),
+//         ("#828282", 0.85),
+//         ("#ffffff", 1.0)
+//     ],
+//     NUM_TERRAIN_COLORS = 256
+// }
 sized_color_space!{
     TERRAIN_COLORS = [
-        ("#ffffff", 0.0),
-        ("#828282", 0.15),
-        ("#007103", 0.4),
-        ("#bab783", 0.42),
-        ("#7b3c02", 0.44),
-        ("#008d71", 0.55),
-        ("#000000", 1.0)
+        ("#000000", 0.0),
+        ("#ffffff", 1.0)
     ],
     NUM_TERRAIN_COLORS = 256
 }
