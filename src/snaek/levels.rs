@@ -1,7 +1,8 @@
 
-pub const NUM_LEVELS: usize = 4;
+pub const NUM_LEVELS: usize = 5;
 
 pub static LEVELS: [&[u8]; NUM_LEVELS] = [
+    RIVERS_LEVEL,
     HUMBLE_BEGINNINGS_LEVEL,
     LONELY_WORLD_LEVEL,
     WATER_V_LAVA_LEVEL,
@@ -9,6 +10,7 @@ pub static LEVELS: [&[u8]; NUM_LEVELS] = [
 ];
 
 pub static LEVEL_NAMES: [&str; NUM_LEVELS] = [
+    "Rivers",
     "Humble Beginnings",
     "Lonely World",
     "Water Vs. Lava",
@@ -21,6 +23,7 @@ pub static LONELY_WORLD_LEVEL: &[u8] = include_bytes!("../../res/levels/lonely_w
 pub static WATER_V_LAVA_LEVEL: &[u8] = include_bytes!("../../res/levels/water_v_lava.bin");
 pub static THREE_BASINS_LEVEL: &[u8] = include_bytes!("../../res/levels/three_basins.bin");
 pub static HUMBLE_BEGINNINGS_LEVEL: &[u8] = include_bytes!("../../res/levels/humble_beginnings.bin");
+pub static RIVERS_LEVEL: &[u8] = include_bytes!("../../res/levels/rivers.bin");
 
 pub static SCORE_BANNER: &[u8] = include_bytes!("../../res/levels/score_banner.bin");
 pub static SCORE_BANNER_VERT: &[u8] = include_bytes!("../../res/levels/score_banner_vertical.bin");
