@@ -469,6 +469,7 @@ fn tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cel
         CellObject::None => {}
         CellObject::Wall => {} // Conversion to water or lava is handled by CellFloor::Empty above
         CellObject::Snake(color, life) => {
+            // println!("ticking snake {:?}", old_cell);
             if life >= 1 {
                 let new_color = match color {
                     SnakeColor::Head | SnakeColor::LightRed => SnakeColor::DarkRed,
@@ -478,6 +479,7 @@ fn tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cel
             } else {
                 new_cell.update(CellObject::None);
             }
+            // println!("new snake object: {:?}", new_cell);
         }
         CellObject::Food(life) => {
             if life >= 1 {
@@ -596,7 +598,7 @@ fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell
         },
     }
 
-    *new_cell = CellState { floor, obj: old_cell.obj, elev };
+    *new_cell = CellState { floor, obj: new_cell.obj, elev };
 }
 
 #[inline(always)]
