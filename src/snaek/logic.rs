@@ -48,9 +48,8 @@ pub fn reset() -> GameState {
     println!("Level 1: {}", levels::LEVEL_NAMES[0]);
     let mut board = Board::from_bytes(levels::LEVELS[0]);
     let snake = Snake::new((5, 5), Dir::Right, 5);
-    _place_debug(&mut board);
 
-    // _place_debug(&mut board);
+    _place_debug(&mut board);
 
     GameState {
         current_level: 0,
@@ -523,8 +522,6 @@ fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell
     // 1. For each surrounding cell, create a rng based on the info for that cell
     // 2. Figure out if that cell would have given liquid to this cell
     // 3. Count up all the liquid gained
-
-    // Giving takes place before receiving
     
     if !can_participate_in_liquid_flow(old_cell) {
         return;
