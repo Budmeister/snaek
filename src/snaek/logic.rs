@@ -49,7 +49,7 @@ pub fn reset() -> GameState {
     let mut board = Board::from_bytes(levels::LEVELS[0]);
     let snake = Snake::new((5, 5), Dir::Right, 5);
 
-    _place_debug(&mut board);
+    // _place_debug(&mut board);
 
     GameState {
         current_level: 0,
