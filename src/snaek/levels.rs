@@ -1,20 +1,21 @@
+use super::types::GameState;
 
-pub const NUM_LEVELS: usize = 5;
+pub struct Level {
+    pub name: &'static str,
+    pub raw_board: &'static [u8],
+    pub index: usize,
+    pub starting_season: fn (&mut GameState),
+}
 
-pub static LEVELS: [&[u8]; NUM_LEVELS] = [
-    RIVERS_LEVEL,
-    HUMBLE_BEGINNINGS_LEVEL,
-    LONELY_WORLD_LEVEL,
-    WATER_V_LAVA_LEVEL,
-    THREE_BASINS_LEVEL,
-];
-
-pub static LEVEL_NAMES: [&str; NUM_LEVELS] = [
-    "Rivers",
-    "Humble Beginnings",
-    "Lonely World",
-    "Water Vs. Lava",
-    "Three Basins",
+pub static LEVELS: &[Level] = &[
+    Level {
+        name: "Rivers",
+        raw_board: RIVERS_LEVEL,
+        index: 0,
+        starting_season: |s| {
+            
+        },
+    }
 ];
 
 pub static _HI_LEVEL: &[u8] = include_bytes!("../../res/levels/hi.bin");
