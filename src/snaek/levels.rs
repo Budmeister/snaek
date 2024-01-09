@@ -6,7 +6,7 @@ pub struct Level {
     pub name: &'static str,
     pub raw_board: &'static [u8],
     pub index: usize,
-    pub starting_season: fn (&mut GameState),
+    pub new_level_state: fn () -> Box<dyn LevelState>,
 }
 
 pub static LEVELS: &[Level] = &[
@@ -14,12 +14,21 @@ pub static LEVELS: &[Level] = &[
         name: "Rivers",
         raw_board: RIVERS_LEVEL,
         index: 0,
-        starting_season: |s| {
-            let coord: Coord = rand::thread_rng().gen();
-            s.board.pt(coord, PlusLava(1));
-        },
+        new_level_state: || Box::new(RiversState),
     }
 ];
+
+pub trait LevelState {
+    fn update(&mut self, s: &mut GameState);
+}
+
+struct RiversState;
+impl LevelState for RiversState {
+    fn update(&mut self, s: &mut GameState) {
+        let coord: Coord = rand::thread_rng().gen();
+        s.board.pt(coord, PlusLava(1));
+    }
+}
 
 pub static _HI_LEVEL: &[u8] = include_bytes!("../../res/levels/hi.bin");
 pub static _RIVER_LEVEL: &[u8] = include_bytes!("../../res/levels/river.bin");

@@ -36,7 +36,7 @@ use super::{
         LOGIC_MAX_MSPT,
         DebugInfo,
     },
-    levels::LEVELS,
+    levels::{LEVELS, LevelState},
 };
 
 use super::art::BoardArt;
@@ -55,7 +55,6 @@ pub fn reset() -> GameState {
 
     GameState {
         level,
-        season: level.starting_season,
         board,
         snake,
         timer: 0,
@@ -77,22 +76,6 @@ pub fn reset() -> GameState {
     }
 }
 
-fn next_level(s: &mut GameState) {
-    let current_level_index = s.level.index + 1;
-    if current_level_index >= LEVELS.len() {
-        return;
-    }
-    s.level = &LEVELS[current_level_index];
-
-    println!("Level {}: {}", s.level.index + 1, s.level.name);
-    s.board = Board::from_bytes(s.level.raw_board);
-    let snake = Snake::new((5, 5), Dir::Right, s.snake.len());
-    
-    s.snake = snake;
-    s.timer = 0;
-    s.failed = false;
-}
-
 const NUM_BOARD_ADVANCE_THREADS: u32 = 4;
 
 ///////////////////////////////////////////////////////////
@@ -102,6 +85,7 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
 
     thread::spawn(move || {
         let mut pool = Pool::new(NUM_BOARD_ADVANCE_THREADS);
+        let mut l: Box<dyn LevelState> = s.write().unwrap().reset_level().expect("No levels?");
         loop {
             let start = Instant::now();
 
@@ -112,12 +96,12 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
                 let lock_gotten = start.elapsed();
                 let lock_time = lock_gotten - lock_start;
                 
-                let poisoned = handle_keys(&rx, &mut s_w);
+                let poisoned = handle_keys(&rx, &mut s_w, &mut l);
                 if poisoned {
                     return;
                 }
 
-                advance_board(&mut s_w, &mut pool);
+                advance_board(&mut s_w, &mut *l, &mut pool);
 
                 processing_time = start.elapsed();
                 s_w.debug_info.lock_uspt = lock_time.as_micros();
@@ -136,7 +120,7 @@ pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -
 ///////////////////////////////////////////////////////////
 
 // Returns true if Tx closed
-fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
+fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn LevelState>) -> bool {
     match rx.try_recv() {
         Ok(key) => {
             match key {
@@ -188,7 +172,9 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
                         println!("Used seed powerup, {} remaining", s.seed_pwrs);
                     }
                 }
-                UserAction::Restart => next_level(s),
+                UserAction::Restart => if let Some(level_state) = s.next_level() {
+                    *l = level_state
+                },
                 UserAction::Debug => {
                     s.debug_screen = !s.debug_screen;
                 }
@@ -207,7 +193,7 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState) -> bool {
 }
 
 // Returns true if failed
-fn advance_board(s: &mut GameState, pool: &mut Pool) {
+fn advance_board(s: &mut GameState, l: &mut dyn LevelState, pool: &mut Pool) {
     if s.failed {
         return;
     }
@@ -255,7 +241,7 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
     });
     s.board = board_new;
 
-    (s.season)(s);
+    l.update(s);
 
     // Decrement powerup
     if s.invinc_time != 0 {

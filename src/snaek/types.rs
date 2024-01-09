@@ -5,7 +5,7 @@ use rand::{Rng, distributions::{Distribution, Standard}};
 
 use crate::snaek::levels::LEVELS;
 
-use super::{levels::{SCORE_BANNER, Level}, art::Fill};
+use super::{levels::{SCORE_BANNER, Level, LevelState}, art::Fill};
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
@@ -448,7 +448,6 @@ pub const DRAW_MAX_USPT: u128 = 1_000_000u128 / 60;
 
 pub struct GameState {
     pub level: &'static Level,
-    pub season: fn (&mut GameState),
     pub board: Board,
     pub snake: Snake,
     pub timer: usize,
@@ -475,13 +474,17 @@ pub struct GameState {
     pub salt: u32,
 }
 impl GameState {
-    fn next_level(&mut self) {
+    pub fn next_level(&mut self) -> Option<Box<dyn LevelState>> {
         let current_level_index = self.level.index + 1;
         if current_level_index >= LEVELS.len() {
-            return;
+            return None;
         }
         self.level = &LEVELS[current_level_index];
-        self.season = self.level.starting_season;
+
+        self.reset_level()
+    }
+    pub fn reset_level(&mut self) -> Option<Box<dyn LevelState>> {
+        let l = (self.level.new_level_state)();
     
         println!("Level {}: {}", self.level.index + 1, self.level.name);
         self.board = Board::from_bytes(self.level.raw_board);
@@ -490,6 +493,8 @@ impl GameState {
         self.snake = snake;
         self.timer = 0;
         self.failed = false;
+
+        Some(l)
     }
 }
 
