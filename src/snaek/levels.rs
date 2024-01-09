@@ -1,4 +1,6 @@
-use super::types::GameState;
+use rand::Rng;
+
+use super::{types::{GameState, Coord}, art::{PlusLava, BoardArt}};
 
 pub struct Level {
     pub name: &'static str,
@@ -13,7 +15,8 @@ pub static LEVELS: &[Level] = &[
         raw_board: RIVERS_LEVEL,
         index: 0,
         starting_season: |s| {
-            
+            let coord: Coord = rand::thread_rng().gen();
+            s.board.pt(coord, PlusLava(1));
         },
     }
 ];

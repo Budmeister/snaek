@@ -1,164 +1,183 @@
 use super::types::{Coord, Board, CellState, CellFloor, CellObject};
+use std::mem::discriminant as variant;
 
 use crate::text::{GRIDS, C_WIDTH, CharGrid};
 
 const EXPLOSION_WALK_COUNT: usize = 30;
 const EXPLOSION_WALK_MAX_DIST: usize = 30;
 
-#[derive(Clone, Copy, Hash, PartialEq, Debug)]
-pub struct Fill {
-    floor: Option<CellFloor>,
-    obj: Option<CellObject>,
-    elev: Option<u8>
+pub trait Fill: Copy {
+    fn fill(&self, cell: &mut CellState);
 }
-impl From<CellFloor> for Fill {
-    fn from(value: CellFloor) -> Self {
-        Self {
-            floor: Some(value),
-            obj: None,
-            elev: None,
+impl Fill for CellFloor {
+    fn fill(&self, cell: &mut CellState) {
+        cell.floor = *self;
+    }
+}
+impl Fill for CellObject {
+    fn fill(&self, cell: &mut CellState) {
+        cell.obj = *self;
+    }
+}
+impl Fill for u8 {
+    fn fill(&self, cell: &mut CellState) {
+        cell.elev = *self;
+    }
+}
+impl Fill for CellState {
+    fn fill(&self, cell: &mut CellState) {
+        *cell = *self;
+    }
+}
+impl Fill for () {
+    fn fill(&self, cell: &mut CellState) {
+        // Does nothing
+    }
+}
+impl<F1: Fill, F2: Fill> Fill for (F1, F2) {
+    fn fill(&self, cell: &mut CellState) {
+        self.0.fill(cell);
+        self.1.fill(cell);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PlusWater(pub u8);
+impl Fill for PlusWater {
+    fn fill(&self, cell: &mut CellState) {
+        match &mut cell.floor {
+            CellFloor::Water { depth } => *depth = depth.saturating_add(self.0),
+            CellFloor::Lava { depth } => {
+                match self.0.cmp(depth) {
+                    std::cmp::Ordering::Less => {
+                        *depth -= self.0;
+                    },
+                    std::cmp::Ordering::Equal => {
+                        cell.floor = CellFloor::Empty;
+                    },
+                    std::cmp::Ordering::Greater => {
+                        cell.elev = cell.elev.saturating_add(*depth);
+                        *depth = 0;
+                    },
+                }
+            }
+            CellFloor::Empty => cell.floor = CellFloor::Water { depth: self.0 },
+            _ => {}
         }
     }
 }
-impl From<CellObject> for Fill {
-    fn from(value: CellObject) -> Self {
-        Self {
-            floor: None,
-            obj: Some(value),
-            elev: None,
+#[derive(Clone, Copy)]
+pub struct PlusLava(pub u8);
+impl Fill for PlusLava {
+    fn fill(&self, cell: &mut CellState) {
+        match &mut cell.floor {
+            CellFloor::Lava { depth } => *depth = depth.saturating_add(self.0),
+            CellFloor::Water { depth } => {
+                match self.0.cmp(depth) {
+                    std::cmp::Ordering::Less => {
+                        *depth -= self.0;
+                    },
+                    std::cmp::Ordering::Equal => {
+                        cell.floor = CellFloor::Empty;
+                    },
+                    std::cmp::Ordering::Greater => {
+                        cell.elev = cell.elev.saturating_add(*depth);
+                        *depth = 0;
+                    },
+                }
+            }
+            CellFloor::Empty => cell.floor = CellFloor::Lava { depth: self.0 },
+            _ => {}
         }
     }
 }
-impl From<u8> for Fill {
-    fn from(value: u8) -> Self {
-        Self {
-            floor: None,
-            obj: None,
-            elev: Some(value),
-        }
+
+pub trait CellMatch {
+    fn matches(&self, other: &CellState) -> bool;
+    fn vmatches(&self, other: &CellState) -> bool;
+}
+impl CellMatch for CellFloor {
+    fn matches(&self, other: &CellState) -> bool {
+        *self == other.floor
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        variant(self) == variant(&other.floor)
     }
 }
-impl From<CellState> for Fill {
-    fn from(value: CellState) -> Self {
-        Self {
-            floor: Some(value.floor),
-            obj: Some(value.obj),
-            elev: Some(value.elev),
-        }
+impl CellMatch for CellObject {
+    fn matches(&self, other: &CellState) -> bool {
+        *self == other.obj
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        variant(self) == variant(&other.obj)
     }
 }
-impl From<()> for Fill {
-    fn from(_: ()) -> Self {
-        Self {
-            floor: None,
-            obj: None,
-            elev: None,
-        }
+impl CellMatch for u8 {
+    fn matches(&self, other: &CellState) -> bool {
+        *self == other.elev
+    }
+    fn vmatches(&self, _: &CellState) -> bool {
+        true
     }
 }
-impl Fill {
-    pub fn update(&mut self, other: Fill) {
-        self.floor = other.floor.or(self.floor);
-        self.obj = other.obj.or(self.obj);
-        self.elev = other.elev.or(self.elev);
+impl<M1: CellMatch, M2: CellMatch> CellMatch for (M1, M2) {
+    fn matches(&self, other: &CellState) -> bool {
+        self.0.matches(other) && self.1.matches(other)
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        self.0.vmatches(other) && self.1.vmatches(other)
     }
 }
-impl<F1: Into<Fill>, F2: Into<Fill>> From<(F1, F2)> for Fill {
-    fn from(value: (F1, F2)) -> Self {
-        let (f1, f2) = value;
-        let (mut f1, f2) = (f1.into(), f2.into());
-        f1.update(f2);
-        f1
+impl CellMatch for CellState {
+    fn matches(&self, other: &CellState) -> bool {
+        *self == *other
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        self.floor.vmatches(&other) && self.obj.vmatches(&other)
     }
 }
+
 impl CellState {
-    pub fn update(&mut self, fill: impl Into<Fill>) {
-        let fill = fill.into();
-        if let Some(floor) = fill.floor {
-            match (&mut self.floor, floor) {
-                (CellFloor::Water { depth: receive }, CellFloor::Water { depth: give }) |
-                (CellFloor::Lava { depth: receive }, CellFloor::Lava { depth: give }) => *receive += give,
-                (receive, give) => *receive = give,
-            }
-        }
-        if let Some(obj) = fill.obj {
-            self.obj = obj;
-        }
-        if let Some(elev) = fill.elev {
-            self.elev = elev
-        }
+    pub fn update(&mut self, fill: impl Fill) {
+        fill.fill(self);
     }
-    pub fn matches(&self, other: impl Into<Fill>) -> bool {
-        let other = other.into();
-        if let Some(floor) = other.floor {
-            if self.floor != floor {
-                return false;
-            }
-        }
-        if let Some(obj) = other.obj {
-            if self.obj != obj {
-                return false;
-            }
-        }
-        if let Some(elev) = other.elev {
-            if self.elev != elev {
-                return false;
-            }
-        }
-        true
+    pub fn matches(&self, other: impl CellMatch) -> bool {
+        other.matches(self)
     }
-    pub fn vmatches(&self, other: impl Into<Fill>) -> bool {
-        use std::mem::discriminant as variant;
-        let other = other.into();
-        if let Some(floor) = other.floor {
-            if variant(&self.floor) != variant(&floor) {
-                return false;
-            }
-        }
-        if let Some(obj) = other.obj {
-            if variant(&self.obj) != variant(&obj) {
-                return false;
-            }
-        }
-        if let Some(elev) = other.elev {
-            if self.elev != elev {
-                return false;
-            }
-        }
-        true
+    pub fn vmatches(&self, other: impl CellMatch) -> bool {
+        other.vmatches(self)
     }
 }
 
 pub trait BoardArt {
-    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>);
-    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>);
-    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>);
-    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>);
-    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>);
-    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Into<Fill>);
+    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill);
+    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Fill);
+    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Fill);
+    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill);
+    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Fill, empty: impl Fill);
+    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Fill + CellMatch);
 }
 impl<const W: usize, const H: usize> BoardArt for Board<W, H> {
-    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+    fn line(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill) {
         line(self, from, to, fill);
     }
 
-    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Into<Fill>) {
+    fn pt(&mut self, pt: impl Into<Coord>, fill: impl Fill) {
         let pt = pt.into();
         if !pt.in_bounds() { return; }
         self.cell_at_mut(pt).update(fill);
     }
 
-    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
+    fn circle(&mut self, center: impl Into<Coord>, radius: usize, fill: impl Fill) {
         circle(self, center, radius, fill);
     }
 
-    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+    fn rect(&mut self, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill) {
         rect(self, from, to, fill);
     }
 
-    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Into<Fill>, empty: impl Into<Fill>) {
+    fn text(&mut self, text: &str, coord: impl Into<Coord>, fill: impl Fill, empty: impl Fill) {
         let Coord { mut x, y } = coord.into();
-        let (fill, empty) = (fill.into(), empty.into());
 
         for mut letter in text.chars() {
             letter = letter.to_ascii_lowercase();
@@ -169,16 +188,19 @@ impl<const W: usize, const H: usize> BoardArt for Board<W, H> {
         }
     }
 
-    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Into<Fill>) {
+    fn explosion(&mut self, center: impl Into<Coord>, fill: impl Fill + CellMatch) {
         explosion(self, center, fill);
     }
 }
 
-fn write_letter<const W: usize, const H: usize>(grid: &CharGrid, x: usize, y: usize, board: &mut Board<W, H>, fill: impl Into<Fill>, empty: impl Into<Fill>) {
-    let (fill, empty) = (fill.into(), empty.into());
+fn write_letter<const W: usize, const H: usize>(grid: &CharGrid, x: usize, y: usize, board: &mut Board<W, H>, fill: impl Fill, empty: impl Fill) {
     for (dy, row) in grid.iter().enumerate() {
         for (dx, should_fill) in row.iter().enumerate() {
-            board.pt((x + dx, y + dy), if *should_fill { fill } else { empty });
+            if *should_fill {
+                board.pt((x + dx, y + dy), fill);
+            } else {
+                board.pt((x + dx, y + dy), empty);
+            }
         }
         board.pt((x + row.len(), y + dy), empty);
     }
@@ -203,9 +225,8 @@ fn dist(from: Coord, to: Coord) -> usize {
     dist2.sqrt() as usize
 }
 
-fn line<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+fn line<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill) {
     let (from, to) = (from.into(), to.into());
-    let fill = fill.into();
     
     let n = dist(from, to) + 1;
     for i in 0..=n {
@@ -214,9 +235,8 @@ fn line<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into
     }
 }
 
-fn circle<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, radius: usize, fill: impl Into<Fill>) {
+fn circle<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, radius: usize, fill: impl Fill) {
     let center = center.into();
-    let fill = fill.into();
 
     let radius = radius as f64;
     let r2 = radius * radius;
@@ -284,7 +304,7 @@ fn circle<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl 
     }
 }
 
-fn rect<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Into<Fill>) {
+fn rect<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, to: impl Into<Coord>, fill: impl Fill) {
     const fn minmax(a: usize, b: usize) -> (usize, usize) {
         if a < b {
             (a, b)
@@ -295,7 +315,6 @@ fn rect<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into
     let (from, to) = (from.into(), to.into());
     let (x1, x2) = minmax(from.x, to.x);
     let (y1, y2) = minmax(from.y, to.y);
-    let fill = fill.into();
     for y in y1..y2 {
         for x in x1..x2 {
             board.pt((x, y), fill);
@@ -303,16 +322,15 @@ fn rect<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into
     }
 }
 
-fn explosion<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, fill: impl Into<Fill>) {
-    let (center, fill) = (center.into(), fill.into());
+fn explosion<const W: usize, const H: usize>(board: &mut Board<W, H>, center: impl Into<Coord>, fill: impl Fill + CellMatch) {
+    let center = center.into();
     for _ in 0..EXPLOSION_WALK_COUNT {
         walk(board, center, EXPLOSION_WALK_MAX_DIST, fill);
     }
 }
 
-fn walk<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, max_dist: usize, fill: impl Into<Fill>) {
+fn walk<const W: usize, const H: usize>(board: &mut Board<W, H>, from: impl Into<Coord>, max_dist: usize, fill: impl Fill + CellMatch) {
     let mut pos = from.into();
-    let fill = fill.into();
     for _ in 0..max_dist {
         if !board.cell_at(pos).vmatches(fill) {
             // Do not overwrite a border

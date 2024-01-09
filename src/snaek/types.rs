@@ -105,8 +105,6 @@ impl CellState {
 pub const B_WIDTH: usize = 200;
 /// The height of the board in cells. Must be less than `isize::MAX`
 pub const B_HEIGHT: usize = 160;
-/// The height of the game area not including the score banner
-pub const G_HEIGHT: usize = 60;
 
 type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
 
@@ -149,9 +147,9 @@ impl<const W: usize, const H: usize> Board<W, H> {
         board_ops::inner_cells_horiz_mut(self.0.deref_mut())
     }
 
-    pub fn new_filled(fill: impl Into<Fill>) -> Self {
+    pub fn new_filled(fill: impl Fill) -> Self {
         let mut cell = CellState { floor: CellFloor::Empty, obj: CellObject::None, elev: 0 };
-        cell.update(fill.into());
+        cell.update(fill);
         Self(Box::new([[cell; W]; H]))
     }
 
@@ -377,7 +375,7 @@ impl Distribution<Coord> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Coord {
         Coord {
             x: rng.gen_range(1..(B_WIDTH-1)),
-            y: rng.gen_range(1..(G_HEIGHT-1)),
+            y: rng.gen_range(1..(B_HEIGHT-1)),
         }
     }
 }
