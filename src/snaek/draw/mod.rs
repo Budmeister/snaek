@@ -379,7 +379,9 @@ sized_color_space!{
 sized_color_space!{
     LAVA_COLORS = [
         ("#ffb054", 0.0),
-        ("#995200", 1.0)
+        ("#b5680e", 0.05),
+        ("#995200", 0.7),
+        ("#824805", 1.0)
     ],
     NUM_LAVA_COLORS = 256
 }
