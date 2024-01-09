@@ -3,7 +3,9 @@ use std::{ops::{Range, Deref, DerefMut, Add}, mem::MaybeUninit};
 
 use rand::{Rng, distributions::{Distribution, Standard}};
 
-use super::{levels::SCORE_BANNER, art::Fill};
+use crate::snaek::levels::LEVELS;
+
+use super::{levels::{SCORE_BANNER, Level}, art::Fill};
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
@@ -103,8 +105,6 @@ impl CellState {
 pub const B_WIDTH: usize = 200;
 /// The height of the board in cells. Must be less than `isize::MAX`
 pub const B_HEIGHT: usize = 160;
-/// The height of the game area not including the score banner
-pub const G_HEIGHT: usize = 60;
 
 type BoardArray<const W: usize, const H: usize> = [[CellState; W]; H];
 
@@ -147,9 +147,9 @@ impl<const W: usize, const H: usize> Board<W, H> {
         board_ops::inner_cells_horiz_mut(self.0.deref_mut())
     }
 
-    pub fn new_filled(fill: impl Into<Fill>) -> Self {
+    pub fn new_filled(fill: impl Fill) -> Self {
         let mut cell = CellState { floor: CellFloor::Empty, obj: CellObject::None, elev: 0 };
-        cell.update(fill.into());
+        cell.update(fill);
         Self(Box::new([[cell; W]; H]))
     }
 
@@ -375,7 +375,7 @@ impl Distribution<Coord> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Coord {
         Coord {
             x: rng.gen_range(1..(B_WIDTH-1)),
-            y: rng.gen_range(1..(G_HEIGHT-1)),
+            y: rng.gen_range(1..(B_HEIGHT-1)),
         }
     }
 }
@@ -447,7 +447,8 @@ pub const LOGIC_MAX_MSPT: u64 = 100;
 pub const DRAW_MAX_USPT: u128 = 1_000_000u128 / 60;
 
 pub struct GameState {
-    pub current_level: usize,
+    pub level: &'static Level,
+    pub season: fn (&mut GameState),
     pub board: Board,
     pub snake: Snake,
     pub timer: usize,
@@ -472,6 +473,24 @@ pub struct GameState {
     pub debug_info: DebugInfo,
 
     pub salt: u32,
+}
+impl GameState {
+    fn next_level(&mut self) {
+        let current_level_index = self.level.index + 1;
+        if current_level_index >= LEVELS.len() {
+            return;
+        }
+        self.level = &LEVELS[current_level_index];
+        self.season = self.level.starting_season;
+    
+        println!("Level {}: {}", self.level.index + 1, self.level.name);
+        self.board = Board::from_bytes(self.level.raw_board);
+        let snake = Snake::new((5, 5), Dir::Right, self.snake.len());
+        
+        self.snake = snake;
+        self.timer = 0;
+        self.failed = false;
+    }
 }
 
 #[derive(Default)]

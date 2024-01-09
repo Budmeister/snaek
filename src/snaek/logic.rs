@@ -16,8 +16,6 @@ use rand::{
     }, SeedableRng,
 };
 
-use crate::snaek::types::DebugInfo;
-
 use super::{
     types::{
         Board,
@@ -34,9 +32,11 @@ use super::{
         FOOD_AND_POWERUP_LIFETIME,
         B_WIDTH,
         board_ops,
-        B_HEIGHT, LOGIC_MAX_MSPT,
+        B_HEIGHT,
+        LOGIC_MAX_MSPT,
+        DebugInfo,
     },
-    levels
+    levels::LEVELS,
 };
 
 use super::art::BoardArt;
@@ -45,14 +45,17 @@ pub const TIMER_RESET: usize = 50;
 pub const INVINC_TIME: usize = 100;
 
 pub fn reset() -> GameState {
-    println!("Level 1: {}", levels::LEVEL_NAMES[0]);
-    let mut board = Board::from_bytes(levels::LEVELS[0]);
+    let current_level_index = 0;
+    let level = &LEVELS[current_level_index];
+    println!("Level 1: {}", level.name);
+    let mut board = Board::from_bytes(level.raw_board);
     let snake = Snake::new((5, 5), Dir::Right, 5);
 
     // _place_debug(&mut board);
 
     GameState {
-        current_level: 0,
+        level,
+        season: level.starting_season,
         board,
         snake,
         timer: 0,
@@ -75,12 +78,14 @@ pub fn reset() -> GameState {
 }
 
 fn next_level(s: &mut GameState) {
-    s.current_level += 1;
-    if s.current_level >= levels::NUM_LEVELS {
+    let current_level_index = s.level.index + 1;
+    if current_level_index >= LEVELS.len() {
         return;
     }
-    println!("Level {}: {}", s.current_level + 1, levels::LEVEL_NAMES[s.current_level]);
-    s.board = Board::from_bytes(levels::LEVELS[s.current_level]);
+    s.level = &LEVELS[current_level_index];
+
+    println!("Level {}: {}", s.level.index + 1, s.level.name);
+    s.board = Board::from_bytes(s.level.raw_board);
     let snake = Snake::new((5, 5), Dir::Right, s.snake.len());
     
     s.snake = snake;
@@ -250,6 +255,8 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
     });
     s.board = board_new;
 
+    (s.season)(s);
+
     // Decrement powerup
     if s.invinc_time != 0 {
         s.invinc_time -= 1;
@@ -285,11 +292,6 @@ fn advance_board(s: &mut GameState, pool: &mut Pool) {
 }
 
 fn choose_powerup_type(s: &GameState) -> PowerupType {
-    if s.current_level == 3 {
-        // Only spawn seeds on level 3
-        return PowerupType::Seed;
-    }
-
     let sum = s.empty_count + s.water_count + s.lava_count + s.turf_count;
     if sum == 0 {
         return rand::random();
