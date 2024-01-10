@@ -14,17 +14,15 @@ pub enum CellFloor {
     Water { depth: u8 },
     Lava { depth: u8 },
     Turf,
-    /// Holds distance from water
-    Seed(usize),
-    DeadSeed,
+    Seed { height: u8, dist: u8 },
     Indicator(IndicatorType),
 }
 impl CellFloor {
     #[inline(always)]
     pub fn height(&self) -> u8 {
         match self {
-            CellFloor::Empty | CellFloor::Turf | CellFloor::Seed(..) | CellFloor::DeadSeed | CellFloor::Indicator(..) => 0,
-            CellFloor::Water { depth } | CellFloor::Lava { depth } => *depth,
+            CellFloor::Empty | CellFloor::Turf | CellFloor::Indicator(..) => 0,
+            CellFloor::Water { depth: height } | CellFloor::Lava { depth: height } | CellFloor::Seed { height, .. } => *height,
         }
     }
 }
@@ -37,15 +35,11 @@ pub enum CellObject {
     Snake(SnakeColor, usize),
     Food(usize),
     Powerup(PowerupType, usize),
-    SuperPowerup(PowerupType, usize),
     Border,
 }
 impl CellObject {
     pub fn is_powerup(&self) -> bool {
         matches!(self, Self::Powerup(..))
-    }
-    pub fn is_super_powerup(&self) -> bool {
-        matches!(self, Self::SuperPowerup(..))
     }
 }
 
@@ -85,7 +79,8 @@ pub enum SnakeColor {
     Head,
 }
 
-pub const MAX_WATER_DIST: usize = 8;
+pub const MAX_WATER_DIST_FOR_SEED_SPREAD: u8 = 10;
+pub const MAX_WATER_DIST: u8 = 20;
 pub const FOOD_AND_POWERUP_LIFETIME: usize = 200;
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
@@ -170,7 +165,7 @@ impl<const W: usize, const H: usize> Board<W, H> {
                     0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None, elev },
                     0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
                     0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
-                    0x6 => CellState { floor: CellFloor::Seed(0), obj: CellObject::None, elev },
+                    0x6 => CellState { floor: CellFloor::Seed { height: 1, dist: 0 }, obj: CellObject::None, elev },
                     0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::Explosion), obj: CellObject::None, elev },
                     0x8 => CellState { floor: CellFloor::Indicator(IndicatorType::Dirt), obj: CellObject::None, elev },
                     _ => CellState::default(),
@@ -461,12 +456,6 @@ pub struct GameState {
     pub explo_pwrs: usize,
     pub turf_pwrs: usize,
     pub seed_pwrs: usize,
-
-    pub empty_count: usize,
-    pub water_count: usize,
-    pub lava_count: usize,
-    pub turf_count: usize,
-    pub seed_count: usize,
 
     pub debug_screen: bool,
     pub debug_info: DebugInfo,

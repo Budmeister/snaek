@@ -61,5 +61,5 @@ spaces = read_spaces_from_file("spaces.txt")
 
 colors = list(zip(colors, spaces))
 
-interpolated_colors = color_space(colors, 256)
+interpolated_colors = color_space(colors, 21)
 save_colors_to_file(interpolated_colors, 'spaced.txt')

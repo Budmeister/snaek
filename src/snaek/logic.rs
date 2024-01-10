@@ -16,6 +16,8 @@ use rand::{
     }, SeedableRng,
 };
 
+use crate::snaek::art::{PlusWater, PlusSeed};
+
 use super::{
     types::{
         Board,
@@ -34,7 +36,7 @@ use super::{
         board_ops,
         B_HEIGHT,
         LOGIC_MAX_MSPT,
-        DebugInfo,
+        DebugInfo, MAX_WATER_DIST_FOR_SEED_SPREAD,
     },
     levels::{LEVELS, LevelState},
 };
@@ -61,15 +63,10 @@ pub fn reset() -> GameState {
         invinc_time: 0,
         failed: false,
         frame_num: 0,
-        water_pwrs: 0,
+        water_pwrs: 5,
         explo_pwrs: 0,
         turf_pwrs: 0,
-        seed_pwrs: 0,
-        empty_count: 0,
-        water_count: 0,
-        lava_count: 0,
-        turf_count: 0,
-        seed_count: 0,
+        seed_pwrs: 3,
         debug_screen: false,
         debug_info: DebugInfo::default(),
         salt: rand::thread_rng().gen(),
@@ -147,7 +144,7 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn Lev
                 UserAction::Water => {
                     if !s.failed && s.water_pwrs != 0 {
                         s.water_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), CellFloor::Water { depth: 1 });
+                        s.board.explosion(s.snake.head_pos(), PlusWater(1));
                         println!("Used water powerup, {} remaining", s.water_pwrs);
                     }
                 }
@@ -168,7 +165,7 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn Lev
                 UserAction::Seed => {
                     if !s.failed && s.seed_pwrs != 0 {
                         s.seed_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), CellFloor::Seed(MAX_WATER_DIST));
+                        s.board.explosion(s.snake.head_pos(), PlusSeed(1));
                         println!("Used seed powerup, {} remaining", s.seed_pwrs);
                     }
                 }
@@ -254,11 +251,7 @@ fn advance_board(s: &mut GameState, l: &mut dyn LevelState, pool: &mut Pool) {
     // Decrement timer
     if s.timer == 0 {
         // Respawn the powerup
-        let pwr = choose_powerup_type(s);
-        s.empty_count = 0;
-        s.water_count = 0;
-        s.lava_count = 0;
-        s.turf_count = 0;
+        let pwr = l.choose_powerup_type(s);
         let pwr_coords: Coord = rand::random();
         s.board.pt(pwr_coords, CellObject::Powerup(pwr, FOOD_AND_POWERUP_LIFETIME));
 
@@ -275,28 +268,6 @@ fn advance_board(s: &mut GameState, l: &mut dyn LevelState, pool: &mut Pool) {
     s.frame_num += 1;
 
     s.board.pt(head_pos, CellObject::Snake(super::types::SnakeColor::Head, s.snake.len()));
-}
-
-fn choose_powerup_type(s: &GameState) -> PowerupType {
-    let sum = s.empty_count + s.water_count + s.lava_count + s.turf_count;
-    if sum == 0 {
-        return rand::random();
-    }
-    let mut num = rand::thread_rng().gen_range(0..sum);
-    if num < s.empty_count {
-        return rand::random();
-    }
-    num -= s.empty_count;
-    if num < s.water_count {
-        return PowerupType::Turf;
-    }
-    num -= s.water_count;
-    if num < s.lava_count {
-        return PowerupType::Seed;
-    }
-    num -= s.lava_count;
-    // It's turf
-    PowerupType::Water
 }
 
 fn handle_hit(cell: CellState, s: &mut GameState) {
@@ -331,28 +302,9 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
                 PowerupType::Invincibility  => s.invinc_time = INVINC_TIME,
             }
         }
-        CellState { obj: CellObject::SuperPowerup(pwr, _), .. } => {
-            println!("Got super-powerup: {:?}", pwr);
-            match pwr {
-                PowerupType::Water          => s.water_pwrs += 10,
-                PowerupType::Explosive      => s.explo_pwrs += 10,
-                PowerupType::Turf           => s.turf_pwrs += 10,
-                PowerupType::Seed           => s.seed_pwrs += 10,
-                PowerupType::Invincibility  => s.invinc_time = INVINC_TIME * 10,
-            }
-        }
         // Fail conditions - handled above - put last so that you can still get powerup on lava
         CellState { floor: CellFloor::Lava { .. }, .. } |
         CellState { obj: CellObject::Wall | CellObject::Border, .. } => {}
-    }
-    // Update counts
-    match cell.floor {
-        CellFloor::Empty => s.empty_count += 1,
-        CellFloor::Water { .. } => s.water_count += 1,
-        CellFloor::Lava { .. } => s.lava_count += 1,
-        CellFloor::Turf => s.turf_count += 1,
-        CellFloor::Seed(_) => s.seed_count += 1,
-        CellFloor::DeadSeed | CellFloor::Indicator(..) => {},
     }
 }
 
@@ -372,79 +324,79 @@ macro_rules! count_matches {
 
 pub fn tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_cell: &mut CellState, coord: Coord, s: &GameState) {
     tick_floor(old_cell, &old_surrounding, new_cell, coord, s);
-    tick_object(old_cell, &old_surrounding, new_cell, coord, s);
-    liquid_flow(old_cell, &old_surrounding, new_cell, coord, s);
+    tick_object(&new_cell.clone(), &old_surrounding, new_cell, coord, s);
+    liquid_flow(&new_cell.clone(), &old_surrounding, new_cell, coord, s);
 }
 
 fn tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState, _coord: Coord, _s: &GameState) {
     match old_cell.floor {
         CellFloor::Turf => {}
         CellFloor::Empty | CellFloor::Indicator(..) => {
-            let (s,) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Seed(_));
-            let weights = [
-                3_00 * s + 1,       // Seed spreads to this block
-                2_000_000           // Nothing happens
-            ];
-            let dist = WeightedIndex::new(&weights).unwrap();
-
-            let mut rng = rand::thread_rng();
-            match dist.sample(&mut rng) {
-                2 => new_cell.update(CellFloor::Seed(0)),
-                3 => {}
-                _ => {}
+            // Find a cell that wants to spread to this cell
+            let dist = old_surrounding
+                .iter()
+                .find_map(|cell| {
+                    if let CellFloor::Seed { dist, .. } = cell.floor {
+                        let new_dist = dist + 1;
+                        if new_dist <= MAX_WATER_DIST_FOR_SEED_SPREAD {
+                            return Some(new_dist);
+                        }
+                    }
+                    None
+                });
+            // At least one seed would like to spread to this cell
+            if dist.is_some() && rand::thread_rng().gen_range(0..100) == 0 {
+                // max speed for dist is 1, so start at MAX_WATER_DIST and decrease from there
+                new_cell.update(CellFloor::Seed { height: 1, dist: MAX_WATER_DIST_FOR_SEED_SPREAD });
             }
         }
         CellFloor::Water { .. } => {
         }
         CellFloor::Lava { .. } => {
         }
-        CellFloor::Seed(dist) => {
-            let mut rng = rand::thread_rng();
-            let dist_inv = MAX_WATER_DIST.saturating_sub(dist);
-            let weights = [
-                2 * dist,       // This seed dies
-                2 * dist_inv,   // This seed spawns food
-                700             // Nothing happens
-            ];
-            let distr = WeightedIndex::new(&weights).unwrap();
-
-            let num = distr.sample(&mut rng);
-            match num {
-                2 => new_cell.update((CellFloor::DeadSeed, CellObject::None)),
-                3 => new_cell.update(CellObject::Food(FOOD_AND_POWERUP_LIFETIME)),
-                4 => {}
-                _ => {}
+        CellFloor::Seed { height, dist } => {
+            #[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
+            enum Delta {
+                Decrement,
+                NoChange,
+                Increment,
+                One,
             }
-            // It's still a seed, so update the dist from water
-            if num == 3 || num == 4 {
-                let dist_new = old_surrounding
-                    .iter()
-                    .filter_map(|x| match x.floor {
-                        CellFloor::Seed(dist) => Some(dist),
-                        CellFloor::Water { .. } => Some(0),
-                        _ => None,
-                    })
-                    .min()
-                    .unwrap_or(MAX_WATER_DIST) + 1;
-                new_cell.update(CellFloor::Seed(dist_new));
+            let mut delta = Delta::Increment;
+            for cell in old_surrounding {
+                match cell.floor {
+                    CellFloor::Seed { dist: other_dist, .. } => {
+                        if other_dist < dist.saturating_sub(1) {
+                            delta = Delta::Decrement;
+                        } else if other_dist < dist {
+                            delta = delta.min(Delta::NoChange);
+                        }
+                    }
+                    CellFloor::Water { .. } => delta = Delta::One,
+                    _ => {}
+                }
             }
-        }
-        CellFloor::DeadSeed => {
-            let (s,) = count_matches!(old_surrounding.iter().map(|state| state.floor), CellFloor::Seed(_));
-            let mut rng = rand::thread_rng();
-            let weights = [
-                3 * s,      // Seed spreads to this block
-                1,          // This dead seed despawns
-                3_500       // Nothing happens
-            ];
-            let distr = WeightedIndex::new(&weights).unwrap();
+            // If None, then this cell should increment its dist
+            let new_dist = match delta {
+                Delta::Decrement => dist.saturating_sub(1),
+                Delta::NoChange => dist,
+                Delta::Increment => dist.saturating_add(1),
+                Delta::One => 1,
+            };
 
-            let num = distr.sample(&mut rng);
-            match num {
-                2 => new_cell.update(CellFloor::Seed(0)),
-                3 => new_cell.update(CellFloor::Empty),
-                4 => {}
-                _ => {}
+            let mut new_height = height;
+
+            if new_dist <= MAX_WATER_DIST_FOR_SEED_SPREAD {
+                if rand::thread_rng().gen_range(0..100) == 0 {
+                    new_height = new_height.saturating_add(1);
+                }
+            } else {
+                new_height = new_height.saturating_sub(1);
+            }
+            if new_dist > MAX_WATER_DIST {
+                new_cell.update(CellFloor::Empty);
+            } else {
+                new_cell.update(CellFloor::Seed { height: new_height, dist: new_dist });
             }
         }
     }
@@ -482,13 +434,6 @@ fn tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cel
                 new_cell.update(CellObject::None);
             }
         }
-        CellObject::SuperPowerup(pwr, life) => {
-            if life >= 1 {
-                new_cell.update(CellObject::SuperPowerup(pwr, life - 1));
-            } else {
-                new_cell.update(CellObject::None);
-            }
-        }
         CellObject::Border => {}
     }
 }
@@ -513,6 +458,15 @@ fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell
     
     if !can_participate_in_liquid_flow(old_cell) {
         return;
+    }
+
+    // If we are seed, and we are touching lava, become lava
+    // This could destroy liquid that flows into this block on the same tick, but that's fine
+    for cell in old_surrounding {
+        if let (CellFloor::Seed { .. }, CellFloor::Lava { depth }) = (old_cell.floor, cell.floor) {
+            new_cell.update(CellFloor::Lava { depth });
+            return;
+        }
     }
 
     // Give liquid
@@ -583,7 +537,7 @@ fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell
         },
     }
 
-    *new_cell = CellState { floor, obj: new_cell.obj, elev };
+    new_cell.update((floor, elev));
 }
 
 #[inline(always)]
@@ -595,6 +549,10 @@ fn can_participate_in_liquid_flow(cell: &CellState) -> bool {
 fn can_liquid_flow(to: &CellState, from: &CellState) -> bool {
     if !can_participate_in_liquid_flow(to) || !can_participate_in_liquid_flow(from) {
         return false;
+    }
+    // Lava can always flow into seed, no matter how tall
+    if matches!(to.floor, CellFloor::Seed { .. }) && matches!(from.floor, CellFloor::Lava { .. }) {
+        return true;
     }
     to.roof() < from.roof()
 }

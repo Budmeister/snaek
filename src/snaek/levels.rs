@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use super::{types::{GameState, Coord}, art::{PlusLava, BoardArt, PlusWater}};
+use super::{types::{GameState, Coord, PowerupType}, art::{PlusLava, BoardArt, PlusWater}};
 
 pub struct Level {
     pub name: &'static str,
@@ -22,6 +22,7 @@ const WEATHER_DURATION_MIN: usize = 50;
 const WEATHER_DURATION_MAX: usize = 250;
 pub trait LevelState {
     fn update(&mut self, s: &mut GameState);
+    fn choose_powerup_type(&mut self, s: &mut GameState) -> PowerupType;
 }
 
 struct LakesState {
@@ -54,6 +55,9 @@ impl LevelState for LakesState {
         } else {
             self.next_weather();
         }
+    }
+    fn choose_powerup_type(&mut self, s: &mut GameState) -> PowerupType {
+        rand::thread_rng().gen()
     }
 }
 impl LakesState {

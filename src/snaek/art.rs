@@ -66,6 +66,14 @@ impl Fill for PlusWater {
         }
     }
 }
+impl CellMatch for PlusWater {
+    fn matches(&self, other: &CellState) -> bool {
+        self.vmatches(other)
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        matches!(other.floor, CellFloor::Water { .. })
+    }
+}
 #[derive(Clone, Copy)]
 pub struct PlusLava(pub u8);
 impl Fill for PlusLava {
@@ -89,6 +97,33 @@ impl Fill for PlusLava {
             CellFloor::Empty => cell.floor = CellFloor::Lava { depth: self.0 },
             _ => {}
         }
+    }
+}
+impl CellMatch for PlusLava {
+    fn matches(&self, other: &CellState) -> bool {
+        self.vmatches(other)
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        matches!(other.floor, CellFloor::Lava { .. })
+    }
+}
+#[derive(Clone, Copy)]
+pub struct PlusSeed(pub u8);
+impl Fill for PlusSeed {
+    fn fill(&self, cell: &mut CellState) {
+        match &mut cell.floor {
+            CellFloor::Lava { depth: height } | CellFloor::Water { depth: height }  | CellFloor::Seed { height, .. } => *height = height.saturating_add(self.0),
+            CellFloor::Empty => cell.floor = CellFloor::Seed { height: self.0, dist: 0 },
+            _ => {}
+        }
+    }
+}
+impl CellMatch for PlusSeed {
+    fn matches(&self, other: &CellState) -> bool {
+        self.vmatches(other)
+    }
+    fn vmatches(&self, other: &CellState) -> bool {
+        matches!(other.floor, CellFloor::Seed { .. })
     }
 }
 
@@ -133,7 +168,7 @@ impl CellMatch for CellState {
         *self == *other
     }
     fn vmatches(&self, other: &CellState) -> bool {
-        self.floor.vmatches(&other) && self.obj.vmatches(&other)
+        self.floor.vmatches(other) && self.obj.vmatches(other)
     }
 }
 

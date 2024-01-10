@@ -237,9 +237,7 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &mut ViewState) {
 }
 
 fn get_cell_color(cell: CellState, s: &GameState) -> Option<Color> {
-    if cell.obj == CellObject::None || 
-            (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0) ||
-            (cell.obj.is_super_powerup() && s.frame_num % 2 == 0)
+    if cell.obj == CellObject::None || (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0)
     {
         get_floor_color(cell.floor, cell.elev)
     } else {
@@ -253,8 +251,7 @@ fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
         CellFloor::Water { depth } => Some(WATER_COLORS[depth as usize]),
         CellFloor::Lava { depth } => Some(LAVA_COLORS[depth as usize]),
         CellFloor::Turf => Some(TURF_COLOR),
-        CellFloor::Seed(dist) => Some(SEED_COLORS[dist.min(MAX_WATER_DIST - 1)]),
-        CellFloor::DeadSeed => Some(DEAD_SEED_COLOR),
+        CellFloor::Seed { height, dist } => Some(SEED_COLORS[dist.min(MAX_WATER_DIST) as usize][height as usize]),
         CellFloor::Indicator(IndicatorType::Empty) => None,
         CellFloor::Indicator(IndicatorType::Explosion) => Some(EXPLOSIVE_COLOR),
         CellFloor::Indicator(IndicatorType::Dirt) => Some(DIRT_COLOR),
@@ -271,7 +268,7 @@ fn get_object_color(obj: CellObject, s: &GameState) -> Option<Color> {
         CellObject::Snake(SnakeColor::LightRed, _) => Some(SNAKE_COLOR_LIGHT_RED),
         CellObject::Snake(SnakeColor::Head, _) => Some(if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD }),
         CellObject::Food(..) => Some(FOOD_COLOR),
-        CellObject::Powerup(pwr, ..) | CellObject::SuperPowerup(pwr, ..) => match pwr {
+        CellObject::Powerup(pwr, ..) => match pwr {
             PowerupType::Water => Some(WATER_COLOR),
             PowerupType::Explosive => Some(EXPLOSIVE_COLOR),
             PowerupType::Turf => Some(TURF_COLOR),
@@ -320,22 +317,185 @@ const TURF_COLOR: Color = as_color!("#94ff8c");
 const WALL_COLOR: Color = as_color!("#000000");
 const FOOD_COLOR: Color = as_color!("#11ff00");
 const SEED_COLOR: Color = as_color!("#065e00");
-const SEED_COLORS: [Color; MAX_WATER_DIST] = [
-    as_color!("#2a5e00"),
-    as_color!("#2a5904"),
-    as_color!("#3a5904"),
-    as_color!("#455904"),
-    as_color!("#595904"),
-    as_color!("#59540b"),
-    as_color!("#594e04"),
-    as_color!("#5e5200"),
-];
-const DEAD_SEED_COLOR: Color = as_color!("#542d1c");
 const BORDER_COLOR: Color = as_color!("#42005e");
 const SNAKE_COLOR_LIGHT_RED: Color = as_color!("#ff6038");
 const SNAKE_COLOR_DARK_RED: Color = as_color!("#871d03");
 const SNAKE_COLOR_HEAD: Color = as_color!("#eb9b2d");
 const SNAKE_COLOR_HEAD_WITH_INVINC: Color = as_color!("#f8ffbd");
+const SEED_COLORS: [[Color; 256]; MAX_WATER_DIST as usize + 1] = [
+    seed_colors::SEED_HEIGHT_COLORS_0,
+    seed_colors::SEED_HEIGHT_COLORS_1,
+    seed_colors::SEED_HEIGHT_COLORS_2,
+    seed_colors::SEED_HEIGHT_COLORS_3,
+    seed_colors::SEED_HEIGHT_COLORS_4,
+    seed_colors::SEED_HEIGHT_COLORS_5,
+    seed_colors::SEED_HEIGHT_COLORS_6,
+    seed_colors::SEED_HEIGHT_COLORS_7,
+    seed_colors::SEED_HEIGHT_COLORS_8,
+    seed_colors::SEED_HEIGHT_COLORS_9,
+    seed_colors::SEED_HEIGHT_COLORS_10,
+    seed_colors::SEED_HEIGHT_COLORS_11,
+    seed_colors::SEED_HEIGHT_COLORS_12,
+    seed_colors::SEED_HEIGHT_COLORS_13,
+    seed_colors::SEED_HEIGHT_COLORS_14,
+    seed_colors::SEED_HEIGHT_COLORS_15,
+    seed_colors::SEED_HEIGHT_COLORS_16,
+    seed_colors::SEED_HEIGHT_COLORS_17,
+    seed_colors::SEED_HEIGHT_COLORS_18,
+    seed_colors::SEED_HEIGHT_COLORS_19,
+    seed_colors::SEED_HEIGHT_COLORS_20,
+];
+mod seed_colors {
+    use super::sized_color_space;
+
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_0 = [
+            ("#62db00", 0.0),
+            ("#2a5e00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_0 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_1 = [
+            ("#65d702", 0.0),
+            ("#2c5d00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_1 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_2 = [
+            ("#68d304", 0.0),
+            ("#2f5c00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_2 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_3 = [
+            ("#6bd007", 0.0),
+            ("#315c00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_3 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_4 = [
+            ("#6fcc09", 0.0),
+            ("#345b00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_4 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_5 = [
+            ("#72c90b", 0.0),
+            ("#375b00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_5 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_6 = [
+            ("#75c50e", 0.0),
+            ("#395a00", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_6 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_7 = [
+            ("#78c210", 0.0),
+            ("#3c5900", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_7 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_8 = [
+            ("#7cbe12", 0.0),
+            ("#3e5900", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_8 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_9 = [
+            ("#7fbb15", 0.0),
+            ("#415800", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_9 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_10 = [
+            ("#82b717", 0.0),
+            ("#445800", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_10 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_11 = [
+            ("#85b319", 0.0),
+            ("#465700", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_11 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_12 = [
+            ("#89b01c", 0.0),
+            ("#495600", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_12 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_13 = [
+            ("#8cac1e", 0.0),
+            ("#4b5600", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_13 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_14 = [
+            ("#8fa920", 0.0),
+            ("#4e5500", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_14 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_15 = [
+            ("#92a523", 0.0),
+            ("#515500", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_15 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_16 = [
+            ("#96a225", 0.0),
+            ("#535400", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_16 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_17 = [
+            ("#999e27", 0.0),
+            ("#565300", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_17 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_18 = [
+            ("#9c9b2a", 0.0),
+            ("#585300", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_18 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_19 = [
+            ("#9f972c", 0.0),
+            ("#5b5200", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_19 = 256
+    }
+    sized_color_space!{
+        SEED_HEIGHT_COLORS_20 = [
+            ("#a3942f", 0.0),
+            ("#5e5200", 1.0)
+        ],
+        NUM_HEIGHT_VALUES_20 = 256
+    }
+}
 
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
@@ -344,20 +504,6 @@ const INVINC_COLOR: Color = as_color!("#000000");
 // Other colors
 const DIRT_COLOR: Color = as_color!("#422417");
 
-
-// Terrain colors
-// sized_color_space!{
-//     TERRAIN_COLORS = [
-//         ("#000000", 0.0),
-//         ("#008d71", 0.45),
-//         ("#7b3c02", 0.56),
-//         ("#bab783", 0.58),
-//         ("#007103", 0.6),
-//         ("#828282", 0.85),
-//         ("#ffffff", 1.0)
-//     ],
-//     NUM_TERRAIN_COLORS = 256
-// }
 sized_color_space!{
     TERRAIN_COLORS = [
         ("#000000", 0.0),
@@ -396,8 +542,8 @@ mod macros {
     #[macro_export]
     macro_rules! sized_color_space {
         ($name:ident = [ $( $color:expr ),* ], $len_name:ident = $len:literal) => {
-            const $name: [(u8, u8, u8); $len] = color_space!([ $( $color ),* ], $len);
-            const $len_name: usize = $len;
+            pub const $name: [(u8, u8, u8); $len] = $crate::snaek::draw::color_space!([ $( $color ),* ], $len);
+            pub const $len_name: usize = $len;
         };
     }
 }
