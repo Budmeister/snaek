@@ -10,13 +10,8 @@ use scoped_threadpool::Pool;
 
 use rand::{
     Rng,
-    distributions::{
-        WeightedIndex,
-        Distribution
-    }, SeedableRng,
+    SeedableRng,
 };
-
-use crate::snaek::art::{PlusWater, PlusSeed};
 
 use super::{
     types::{
@@ -27,11 +22,9 @@ use super::{
         CellObject,
         CellState,
         CellFloor,
-        PowerupType,
         Coord,
         MAX_WATER_DIST,
         SnakeColor,
-        FOOD_AND_POWERUP_LIFETIME,
         B_WIDTH,
         board_ops,
         B_HEIGHT,
@@ -59,14 +52,10 @@ pub fn reset() -> GameState {
         level,
         board,
         snake,
-        timer: 0,
+        coins: 0,
         invinc_time: 0,
         failed: false,
         frame_num: 0,
-        water_pwrs: 5,
-        explo_pwrs: 0,
-        turf_pwrs: 0,
-        seed_pwrs: 3,
         debug_screen: false,
         debug_info: DebugInfo::default(),
         salt: rand::thread_rng().gen(),
@@ -141,41 +130,12 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn Lev
                         s.snake.point(Dir::Right)
                     }
                 }
-                UserAction::Water => {
-                    if !s.failed && s.water_pwrs != 0 {
-                        s.water_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), PlusWater(1));
-                        println!("Used water powerup, {} remaining", s.water_pwrs);
-                    }
-                }
-                UserAction::Explosion => {
-                    if !s.failed && s.explo_pwrs != 0 {
-                        s.explo_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), (CellFloor::Empty, CellObject::None));
-                        println!("Used explosion powerup, {} remaining", s.explo_pwrs);
-                    }
-                }
-                UserAction::Turf => {
-                    if !s.failed && s.turf_pwrs != 0 {
-                        s.turf_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), CellFloor::Turf);
-                        println!("Used turf powerup, {} remaining", s.turf_pwrs);
-                    }
-                }
-                UserAction::Seed => {
-                    if !s.failed && s.seed_pwrs != 0 {
-                        s.seed_pwrs -= 1;
-                        s.board.explosion(s.snake.head_pos(), PlusSeed(1));
-                        println!("Used seed powerup, {} remaining", s.seed_pwrs);
-                    }
-                }
                 UserAction::Restart => if let Some(level_state) = s.next_level() {
                     *l = level_state
                 },
                 UserAction::Debug => {
                     s.debug_screen = !s.debug_screen;
                 }
-                UserAction::Shop => {}
                 UserAction::Quit => {}
             };
         }
@@ -248,23 +208,6 @@ fn advance_board(s: &mut GameState, l: &mut dyn LevelState, pool: &mut Pool) {
         }
     }
 
-    // Decrement timer
-    if s.timer == 0 {
-        // Respawn the powerup
-        let pwr = l.choose_powerup_type(s);
-        let pwr_coords: Coord = rand::random();
-        s.board.pt(pwr_coords, CellObject::Powerup(pwr, FOOD_AND_POWERUP_LIFETIME));
-
-        let food_coords: Coord = rand::random();
-        s.board.pt(food_coords, CellObject::Food(FOOD_AND_POWERUP_LIFETIME));
-
-        // ...
-
-        // s.powerup_freeze = POWERUP_FREEZE_RESET;
-        s.timer = TIMER_RESET;
-    } else {
-        s.timer -= 1;
-    }
     s.frame_num += 1;
 
     s.board.pt(head_pos, CellObject::Snake(super::types::SnakeColor::Head, s.snake.len()));
@@ -292,34 +235,10 @@ fn handle_hit(cell: CellState, s: &mut GameState) {
             println!("Ate food. Score: {}", s.snake.len());
             s.snake.add_food(1);
         }
-        CellState { obj: CellObject::Powerup(pwr, _), .. } => {
-            println!("Got powerup: {:?}", pwr);
-            match pwr {
-                PowerupType::Water          => s.water_pwrs += 1,
-                PowerupType::Explosive      => s.explo_pwrs += 1,
-                PowerupType::Turf           => s.turf_pwrs += 1,
-                PowerupType::Seed           => s.seed_pwrs += 1,
-                PowerupType::Invincibility  => s.invinc_time = INVINC_TIME,
-            }
-        }
         // Fail conditions - handled above - put last so that you can still get powerup on lava
         CellState { floor: CellFloor::Lava { .. }, .. } |
         CellState { obj: CellObject::Wall | CellObject::Border, .. } => {}
     }
-}
-
-macro_rules! count_matches {
-    // The macro will take an array and a list of items to match.
-    ($arr:expr, $( $x:pat ),*) => {{
-        // Convert the array into an iterator.
-        let iter = (&$arr).clone().into_iter();
-
-        // Initialize a tuple to store counts. We use a tuple here assuming a known number of items.
-        let counts = ( $( iter.clone().filter(|&item| match item { $x => true, _ => false }).count(), )* );
-
-        // Return the counts.
-        counts
-    }};
 }
 
 pub fn tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_cell: &mut CellState, coord: Coord, s: &GameState) {
@@ -423,13 +342,6 @@ fn tick_object(old_cell: &CellState, _old_surrounding: &[&CellState; 8], new_cel
         CellObject::Food(life) => {
             if life >= 1 {
                 new_cell.update(CellObject::Food(life - 1));
-            } else {
-                new_cell.update(CellObject::None);
-            }
-        }
-        CellObject::Powerup(pwr, life) => {
-            if life >= 1 {
-                new_cell.update(CellObject::Powerup(pwr, life - 1));
             } else {
                 new_cell.update(CellObject::None);
             }
@@ -733,11 +645,6 @@ pub enum UserAction {
     Left,
     Down,
     Right,
-    Water,
-    Explosion,
-    Turf,
-    Seed,
-    Shop,
     Restart,
     Quit,
     Debug,

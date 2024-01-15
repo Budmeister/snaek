@@ -20,7 +20,6 @@ use super::{
         CellObject,
         CellFloor,
         SnakeColor,
-        PowerupType,
         Coord,
         B_HEIGHT, IndicatorType, Board, LOGIC_MAX_MSPT, DRAW_MAX_USPT
     }, levels, art::BoardArt
@@ -237,8 +236,7 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &mut ViewState) {
 }
 
 fn get_cell_color(cell: CellState, s: &GameState) -> Option<Color> {
-    if cell.obj == CellObject::None || (cell.obj.is_powerup() && (s.frame_num / 2) % 2 == 0)
-    {
+    if cell.obj == CellObject::None {
         get_floor_color(cell.floor, cell.elev)
     } else {
         get_object_color(cell.obj, s)
@@ -268,13 +266,6 @@ fn get_object_color(obj: CellObject, s: &GameState) -> Option<Color> {
         CellObject::Snake(SnakeColor::LightRed, _) => Some(SNAKE_COLOR_LIGHT_RED),
         CellObject::Snake(SnakeColor::Head, _) => Some(if s.invinc_time != 0 { SNAKE_COLOR_HEAD_WITH_INVINC } else { SNAKE_COLOR_HEAD }),
         CellObject::Food(..) => Some(FOOD_COLOR),
-        CellObject::Powerup(pwr, ..) => match pwr {
-            PowerupType::Water => Some(WATER_COLOR),
-            PowerupType::Explosive => Some(EXPLOSIVE_COLOR),
-            PowerupType::Turf => Some(TURF_COLOR),
-            PowerupType::Seed => Some(SEED_COLOR),
-            PowerupType::Invincibility => Some(INVINC_COLOR),
-        }
         CellObject::Border => Some(BORDER_COLOR),
     }
 }

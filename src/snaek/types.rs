@@ -34,13 +34,7 @@ pub enum CellObject {
     Wall,
     Snake(SnakeColor, usize),
     Food(usize),
-    Powerup(PowerupType, usize),
     Border,
-}
-impl CellObject {
-    pub fn is_powerup(&self) -> bool {
-        matches!(self, Self::Powerup(..))
-    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
@@ -81,7 +75,6 @@ pub enum SnakeColor {
 
 pub const MAX_WATER_DIST_FOR_SEED_SPREAD: u8 = 10;
 pub const MAX_WATER_DIST: u8 = 20;
-pub const FOOD_AND_POWERUP_LIFETIME: usize = 200;
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub struct CellState {
@@ -445,17 +438,12 @@ pub struct GameState {
     pub level: &'static Level,
     pub board: Board,
     pub snake: Snake,
-    pub timer: usize,
-    /// Time in frames until invincibility is gone
+    pub coins: usize,
     pub invinc_time: usize,
+
     pub failed: bool,
     /// The frame number from logic's perspective
     pub frame_num: usize,
-
-    pub water_pwrs: usize,
-    pub explo_pwrs: usize,
-    pub turf_pwrs: usize,
-    pub seed_pwrs: usize,
 
     pub debug_screen: bool,
     pub debug_info: DebugInfo,
@@ -480,7 +468,6 @@ impl GameState {
         let snake = Snake::new((5, 5), Dir::Right, self.snake.len());
         
         self.snake = snake;
-        self.timer = 0;
         self.failed = false;
 
         Some(l)

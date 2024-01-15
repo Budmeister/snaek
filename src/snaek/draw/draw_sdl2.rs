@@ -82,12 +82,7 @@ fn key_to_user_action(keycode: Keycode) -> Option<UserAction> {
         Keycode::Left => Some(UserAction::Left),
         Keycode::Down => Some(UserAction::Down),
         Keycode::Right => Some(UserAction::Right),
-        Keycode::W => Some(UserAction::Water),
-        Keycode::E => Some(UserAction::Explosion),
-        Keycode::R => Some(UserAction::Turf),
-        Keycode::D => Some(UserAction::Seed),
         Keycode::F => Some(UserAction::Restart),
-        Keycode::S => Some(UserAction::Shop),
         Keycode::F3 => Some(UserAction::Debug),
         _ => None,
     }
