@@ -61,6 +61,8 @@ pub enum IndicatorType {
     Empty,
     MSPTNormal,
     MSPTOver,
+    Coin,
+    PM,
     Powerup(PowerupType),
 }
 
@@ -153,10 +155,11 @@ impl<const W: usize, const H: usize> Board<W, H> {
                     0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev },
                     0x1 => CellState { floor: CellFloor::Water { depth: 1 }, obj: CellObject::None, elev },
                     0x2 => CellState { floor: CellFloor::Lava { depth: 1 }, obj: CellObject::None, elev },
-                    // 0x3 was used for Turf which is no longer in the game
-                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
-                    0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
-                    0x6 => CellState { floor: CellFloor::Seed { height: 1, dist: 0 }, obj: CellObject::None, elev },
+                    0x3 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
+                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
+                    0x5 => CellState { floor: CellFloor::Seed { height: 1, dist: 0 }, obj: CellObject::None, elev },
+                    0x6 => CellState { floor: CellFloor::Indicator(IndicatorType::Coin), obj: CellObject::None, elev },
+                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::PM), obj: CellObject::None, elev },
                     _ => CellState::default(),
                 };
             }

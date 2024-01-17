@@ -27,29 +27,49 @@ pub enum ShopItemFill {
 
 pub static SCORE_BANNER_VERT: &[u8] = include_bytes!("../../res/levels/score_banner_vertical.bin");
 
+const SHOP_X: usize = 2;
+const SHOP_Y: usize = 3;
+const SHOP_ITEM_H: usize = 15;
+const PM_X: usize = SHOP_X + 6;
+const PM_Y: usize = SHOP_Y + NUM_SHOP_ITEMS * SHOP_ITEM_H + 2;
+const COINS_X: usize = SHOP_X + 6;
+const COINS_Y: usize = PM_Y + 7;
 pub trait ScoreboardArt: BoardArt {
+    fn shop(&mut self, shop: &ShopState) {
+        for item_num in 0..NUM_SHOP_ITEMS {
+            self.shop_item_display(shop, item_num, if item_num == shop.selected { ShopItemFill::FromItem } else { ShopItemFill::Clear });
+        }
+    }
     fn shop_remove(&mut self, shop: &ShopState) {
         for item_num in 0..NUM_SHOP_ITEMS {
             self.shop_item_display(shop, item_num, ShopItemFill::Remove);
         }
     }
-    fn shop_fill(&mut self, shop: &ShopState) {
-        for item_num in 0..NUM_SHOP_ITEMS {
-            self.shop_item_display(shop, item_num, if item_num == shop.selected { ShopItemFill::FromItem } else { ShopItemFill::Clear });
-        }
+    fn pm(&mut self, shop: &ShopState) {
+        let pm = format!("{}", shop.price_multiplier);
+        self.text(&pm, (PM_X, PM_Y), CellObject::None, ());
+    }
+    fn pm_remove(&mut self, shop: &ShopState) {
+        let pm = format!("{}", shop.price_multiplier);
+        self.text(&pm, (PM_X, PM_Y), CellObject::Wall, ());
+    }
+    fn coins(&mut self, coins: usize) {
+        let coins = format!("{}", coins);
+        self.text(&coins, (COINS_X, COINS_Y), CellObject::None, ());
+    }
+    fn coins_remove(&mut self, coins: usize) {
+        let coins = format!("{}", coins);
+        self.text(&coins, (COINS_X, COINS_Y), CellObject::Wall, ());
     }
     fn shop_item_display(&mut self, shop: &ShopState, item_num: usize, fill: ShopItemFill) {
         if item_num > NUM_SHOP_ITEMS {
             return;
         }
 
-        const SHOP_X: usize = 4;
-        const SHOP_Y: usize = 3;
-        const SHOP_ITEM_H: usize = 15;
-
         let y = SHOP_Y + SHOP_ITEM_H * item_num;
         let xy = (SHOP_X, y).into();
-        let ShopItem { kind, price } = shop.powerups[item_num];
+        let ShopItem { kind, mut price } = shop.powerups[item_num];
+        price *= shop.price_multiplier;
         match fill {
             ShopItemFill::Remove => self._shop_item_display(kind, price, xy, (CellFloor::Empty, CellObject::Wall)),
             ShopItemFill::Clear => self._shop_item_display(kind, price, xy, (CellFloor::Empty, CellObject::None)),

@@ -52,13 +52,12 @@ pub fn reset() -> (GameState, Box<dyn LevelState>) {
     let shop = l.new_shop();
     println!("Level 1: {}", level.name);
     let mut board = Board::from_bytes(level.raw_board);
-    let mut scoreboard = Board::from_bytes(SCORE_BANNER_VERT);
-    scoreboard.shop_fill(&shop);
+    let scoreboard = Board::from_bytes(SCORE_BANNER_VERT);
     let snake = Snake::new((5, 5), Dir::Right, 5);
-
+    
     // _place_debug(&mut board);
-
-    let s = GameState {
+    
+    let mut s = GameState {
         level,
         scoreboard,
         shop,
@@ -72,6 +71,10 @@ pub fn reset() -> (GameState, Box<dyn LevelState>) {
         debug_info: DebugInfo::default(),
         salt: rand::thread_rng().gen(),
     };
+    l.reset_shop(&mut s);
+    s.scoreboard.shop(&s.shop);
+    s.scoreboard.pm(&s.shop);
+    s.scoreboard.coins(s.coins);
 
     (s, l)
 }
@@ -181,11 +184,13 @@ fn buy(s: &mut GameState, l: &mut dyn LevelState) {
     let ShopItem { kind, mut price } = s.shop.get_selected();
     price *= s.shop.price_multiplier;
     
-    println!("Buy! Current coins: {}. Cost: {}", s.coins, price);
+    println!("Buy {:?}! Current coins: {}. Cost: {}", kind, s.coins, price);
     if price > s.coins {
         return;
     }
+    s.scoreboard.coins_remove(s.coins);
     s.coins -= price;
+    s.scoreboard.coins(s.coins);
 
     match kind {
         super::types::PowerupType::Water => {
@@ -207,7 +212,7 @@ fn buy(s: &mut GameState, l: &mut dyn LevelState) {
     
     s.scoreboard.shop_remove(&s.shop);
     l.reset_shop(s);
-    s.scoreboard.shop_fill(&s.shop);
+    s.scoreboard.shop(&s.shop);
 }
 
 // Returns true if failed

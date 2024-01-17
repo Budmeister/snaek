@@ -260,6 +260,8 @@ fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
         CellFloor::Indicator(IndicatorType::Empty) => None,
         CellFloor::Indicator(IndicatorType::MSPTNormal) => Some(MSPT_NORMAL_COLOR),
         CellFloor::Indicator(IndicatorType::MSPTOver) => Some(MSPT_OVER_COLOR),
+        CellFloor::Indicator(IndicatorType::Coin) => Some(COIN_COLOR),
+        CellFloor::Indicator(IndicatorType::PM) => Some(PM_COLOR),
         
         CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Water)) => Some(WATER_COLOR),
         CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Explosive)) => Some(EXPLOSIVE_COLOR),
@@ -497,9 +499,11 @@ mod seed_colors {
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
 const INVINC_COLOR: Color = as_color!("#262626");
+const SHOVEL_COLOR: Color = as_color!("#422417");
 
 // Other colors
-const SHOVEL_COLOR: Color = as_color!("#422417");
+const COIN_COLOR: Color = as_color!("#bdb600");
+const PM_COLOR: Color = as_color!("#62fa4b");
 
 sized_color_space!{
     TERRAIN_COLORS = [
