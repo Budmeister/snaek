@@ -40,10 +40,6 @@ fn main() {
                     byte = 0x5; // Border
                 } else if color == as_rgba!(SEED_COLOR) {
                     byte = 0x6; // Seed
-                } else if color == as_rgba!(EXPLOSIVE_COLOR) {
-                    byte = 0x7; // Explosion indicator
-                } else if color == as_rgba!(DIRT_COLOR) {
-                    byte = 0x8; // Dirt indicator
                 } else {
                     byte = 0x0;
                 };

@@ -7,13 +7,14 @@
 6. Invincibility is an on-demand powerup
 7. Explosion only decreases elevation and does nothing else
 8. It is a loss condition that the last seed is gone.
+9. Maybe we add a tutorial at some point?
 
 ## Powerups
 1. Water
 2. Explosive
-3. Seed
-4. Invincibility
-5. Shovel
+3. Shovel
+4. Seed
+5. Invincibility
 
 ## Pricing
 The price of each item is gonna be multiplied by the price multiplier (PM), which starts at 10 and has a random chance of incrementing each frame (say, 0.002). When they buy something, the shop resets. The first two times they shop it is water and seed. After that, they can choose one of 3 random powerups for a price of {price of item} * PM (at the time the shop is loaded). I'll start with the prices all at 10x and adjust them later for game balance. That way, as long as the player places their first forest/garden within a reasonable amount of time from the start, they'll have enough coins to place it. I might show the PM on the screen.

@@ -3,17 +3,22 @@ use rand::Rng;
 use crate::snaek::{
     types::{
         GameState,
+        ShopState,
         Coord,
-        PowerupType
     },
     art::{
-        BoardArt,
         PlusLava,
-        PlusWater
+        BoardArt,
+        PlusWater,
     }
 };
 
-use super::{LevelState, Level};
+use super::{
+    Level,
+    LevelState,
+    reset_shop_rand,
+    new_shop_rand
+};
 
 
 pub static LAKES_LEVEL: Level = Level {
@@ -57,8 +62,11 @@ impl LevelState for LakesState {
             self.next_weather();
         }
     }
-    fn choose_powerup_type(&mut self, s: &mut GameState) -> PowerupType {
-        rand::thread_rng().gen()
+    fn reset_shop(&mut self, s: &mut GameState) {
+        reset_shop_rand(&mut s.shop, |_| 10);
+    }
+    fn new_shop(&mut self) -> ShopState {
+        new_shop_rand(10, |_| 10)
     }
 }
 impl LakesState {

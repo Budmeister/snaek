@@ -5,7 +5,7 @@ use rand::{Rng, distributions::{Distribution, Standard}};
 
 use crate::snaek::levels::LEVELS;
 
-use super::{levels::{SCORE_BANNER, Level, LevelState}, art::Fill};
+use super::{levels::{Level, LevelState}, art::Fill};
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub enum CellFloor {
@@ -13,7 +13,6 @@ pub enum CellFloor {
     Empty,
     Water { depth: u8 },
     Lava { depth: u8 },
-    Turf,
     Seed { height: u8, dist: u8 },
     Indicator(IndicatorType),
 }
@@ -21,7 +20,7 @@ impl CellFloor {
     #[inline(always)]
     pub fn height(&self) -> u8 {
         match self {
-            CellFloor::Empty | CellFloor::Turf | CellFloor::Indicator(..) => 0,
+            CellFloor::Empty | CellFloor::Indicator(..) => 0,
             CellFloor::Water { depth: height } | CellFloor::Lava { depth: height } | CellFloor::Seed { height, .. } => *height,
         }
     }
@@ -41,7 +40,7 @@ pub enum CellObject {
 pub enum PowerupType {
     Water,
     Explosive,
-    Turf,
+    Shovel,
     Seed,
     Invincibility,
 }
@@ -50,7 +49,7 @@ impl Distribution<PowerupType> for Standard {
         match rng.gen_range(0..5) {
             0 => PowerupType::Water,
             1 => PowerupType::Explosive,
-            2 => PowerupType::Turf,
+            2 => PowerupType::Shovel,
             3 => PowerupType::Invincibility,
             _ => PowerupType::Seed,
         }
@@ -60,10 +59,9 @@ impl Distribution<PowerupType> for Standard {
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
 pub enum IndicatorType {
     Empty,
-    Explosion,
-    Dirt,
     MSPTNormal,
     MSPTOver,
+    Powerup(PowerupType),
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Debug)]
@@ -155,12 +153,10 @@ impl<const W: usize, const H: usize> Board<W, H> {
                     0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev },
                     0x1 => CellState { floor: CellFloor::Water { depth: 1 }, obj: CellObject::None, elev },
                     0x2 => CellState { floor: CellFloor::Lava { depth: 1 }, obj: CellObject::None, elev },
-                    0x3 => CellState { floor: CellFloor::Turf, obj: CellObject::None, elev },
+                    // 0x3 was used for Turf which is no longer in the game
                     0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
                     0x5 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
                     0x6 => CellState { floor: CellFloor::Seed { height: 1, dist: 0 }, obj: CellObject::None, elev },
-                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::Explosion), obj: CellObject::None, elev },
-                    0x8 => CellState { floor: CellFloor::Indicator(IndicatorType::Dirt), obj: CellObject::None, elev },
                     _ => CellState::default(),
                 };
             }
@@ -434,9 +430,15 @@ impl Snake {
 pub const LOGIC_MAX_MSPT: u64 = 100;
 pub const DRAW_MAX_USPT: u128 = 1_000_000u128 / 60;
 
+pub const SB_WIDTH: usize = 28;
+pub const SB_HEIGHT: usize = 100;
+
 pub struct GameState {
     pub level: &'static Level,
     pub board: Board,
+    pub scoreboard: Board<SB_WIDTH, SB_HEIGHT>,
+    pub shop: ShopState,
+
     pub snake: Snake,
     pub coins: usize,
     pub invinc_time: usize,
@@ -456,7 +458,7 @@ impl GameState {
         if current_level_index >= LEVELS.len() {
             return None;
         }
-        self.level = &LEVELS[current_level_index];
+        self.level = LEVELS[current_level_index];
 
         self.reset_level()
     }
@@ -472,6 +474,32 @@ impl GameState {
 
         Some(l)
     }
+}
+
+pub const NUM_SHOP_ITEMS: usize = 3;
+pub struct ShopState {
+    pub powerups: [ShopItem; NUM_SHOP_ITEMS],
+    pub selected: usize,
+    pub price_multiplier: usize,
+}
+impl ShopState {
+    #[inline]
+    pub fn get_selected(&self) -> ShopItem {
+        self.powerups[self.selected]
+    }
+    #[inline]
+    pub fn get_selected_ref(&self) -> &ShopItem {
+        &self.powerups[self.selected]
+    }
+    #[inline]
+    pub fn get_selected_mut(&mut self) -> &mut ShopItem {
+        &mut self.powerups[self.selected]
+    }
+}
+#[derive(Clone, Copy)]
+pub struct ShopItem {
+    pub kind: PowerupType,
+    pub price: usize,
 }
 
 #[derive(Default)]
@@ -535,5 +563,21 @@ impl<I, T, const C: usize> Iterator for Chunks<I, T, C>
             std::mem::forget(item);
             Some(item_copy)
         }
+    }
+}
+
+pub fn proc_array<T, F: FnMut(usize) -> T, const N: usize>(mut gen: F) -> [T; N] {
+    unsafe {
+        // Safety: This is safe because the thing we are claiming to have initialized
+        // is a bunch of MaybeUninits
+        let mut item: [MaybeUninit<T>; N] = MaybeUninit::uninit().assume_init();
+        for i in 0..N {
+            item[i].write(gen(i));
+        }
+        // Can't transmute the array because Rust can't tell that MaybeUninit<T> and T
+        // have the same size because T is generic
+        let item_copy = std::mem::transmute_copy(&item);
+        std::mem::forget(item);
+        item_copy
     }
 }

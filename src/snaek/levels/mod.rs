@@ -1,6 +1,11 @@
 use rand::Rng;
 
-use super::{types::{GameState, Coord, PowerupType}, art::{PlusLava, BoardArt, PlusWater}};
+use super::types::{
+    GameState,
+    PowerupType,
+    ShopState,
+    ShopItem, proc_array
+};
 
 mod lakes;
 use lakes::LAKES_LEVEL;
@@ -20,9 +25,33 @@ pub struct Level {
     pub new_level_state: fn () -> Box<dyn LevelState>,
 }
 
-pub trait LevelState {
+pub trait LevelState: Send {
     fn update(&mut self, s: &mut GameState);
-    fn choose_powerup_type(&mut self, s: &mut GameState) -> PowerupType;
+    fn reset_shop(&mut self, s: &mut GameState);
+    fn new_shop(&mut self) -> ShopState;
+}
+
+pub fn new_shop_rand<F: FnMut(PowerupType) -> usize>(price_multiplier: usize, mut price: F) -> ShopState {
+    ShopState {
+        powerups: proc_array(|_| {
+            let kind = rand::random();
+            let price = price(kind);
+            ShopItem { kind, price }
+        }),
+        selected: 0,
+        price_multiplier,
+    }
+}
+
+pub fn reset_shop_rand<F: FnMut(PowerupType) -> usize>(shop: &mut ShopState, mut price: F) {
+    for item in &mut shop.powerups {
+        let kind = rand::random();
+        let price = price(kind);
+        *item = ShopItem {
+            kind,
+            price,
+        }
+    }
 }
 
 // pub static _HI_LEVEL: &[u8] = include_bytes!("../../res/levels/hi.bin");
@@ -32,6 +61,3 @@ pub trait LevelState {
 // pub static THREE_BASINS_LEVEL: &[u8] = include_bytes!("../../res/levels/three_basins.bin");
 // pub static HUMBLE_BEGINNINGS_LEVEL: &[u8] = include_bytes!("../../res/levels/humble_beginnings.bin");
 // pub static RIVERS_LEVEL: &[u8] = include_bytes!("../../res/levels/rivers.bin");
-
-pub static SCORE_BANNER: &[u8] = include_bytes!("../../../res/levels/score_banner.bin");
-pub static SCORE_BANNER_VERT: &[u8] = include_bytes!("../../../res/levels/score_banner_vertical.bin");

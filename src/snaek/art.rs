@@ -1,7 +1,7 @@
-use super::types::{Coord, Board, CellState, CellFloor, CellObject};
+use super::types::{Coord, Board, CellState, CellFloor, CellObject, IndicatorType, PowerupType};
 use std::mem::discriminant as variant;
 
-use crate::text::{GRIDS, C_WIDTH, CharGrid};
+use crate::text::{GRIDS, C_WIDTH};
 
 const EXPLOSION_WALK_COUNT: usize = 30;
 const EXPLOSION_WALK_MAX_DIST: usize = 30;
@@ -17,6 +17,16 @@ impl Fill for CellFloor {
 impl Fill for CellObject {
     fn fill(&self, cell: &mut CellState) {
         cell.obj = *self;
+    }
+}
+impl Fill for IndicatorType {
+    fn fill(&self, cell: &mut CellState) {
+        CellFloor::Indicator(*self).fill(cell);
+    }
+}
+impl Fill for PowerupType {
+    fn fill(&self, cell: &mut CellState) {
+        CellFloor::Indicator(IndicatorType::Powerup(*self)).fill(cell);
     }
 }
 impl Fill for u8 {
@@ -38,6 +48,11 @@ impl<F1: Fill, F2: Fill> Fill for (F1, F2) {
     fn fill(&self, cell: &mut CellState) {
         self.0.fill(cell);
         self.1.fill(cell);
+    }
+}
+impl Fill for fn(&mut CellState) {
+    fn fill(&self, cell: &mut CellState) {
+        self(cell);
     }
 }
 
@@ -228,7 +243,16 @@ impl<const W: usize, const H: usize> BoardArt for Board<W, H> {
     }
 }
 
-fn write_letter<const W: usize, const H: usize>(grid: &CharGrid, x: usize, y: usize, board: &mut Board<W, H>, fill: impl Fill, empty: impl Fill) {
+pub fn write_letter<
+    const C_W: usize,
+    const C_H: usize
+>(
+    grid: &[[bool; C_W]; C_H],
+    x: usize, y: usize,
+    board: &mut (impl BoardArt + ?Sized),
+    fill: impl Fill,
+    empty: impl Fill
+) {
     for (dy, row) in grid.iter().enumerate() {
         for (dx, should_fill) in row.iter().enumerate() {
             if *should_fill {

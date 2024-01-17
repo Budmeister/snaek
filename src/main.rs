@@ -33,11 +33,11 @@ fn start_classic() {
 fn start_snaek<F: Frontend>() {
     let f = F::new((global::W_WIDTH, 800));
 
-    let state = snaek::logic::reset();
+    let (s, l) = snaek::logic::reset();
 
-    let state = Arc::new(RwLock::new(state));
+    let s = Arc::new(RwLock::new(s));
     let (tx, rx) = mpsc::channel();
-    snaek::logic::spawn_logic_thread(state.clone(), rx);
+    snaek::logic::spawn_logic_thread(s.clone(), l, rx);
 
-    snaek::draw::window_loop(f, state, tx);
+    snaek::draw::window_loop(f, s, tx);
 }

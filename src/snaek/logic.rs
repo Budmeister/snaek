@@ -29,49 +29,62 @@ use super::{
         board_ops,
         B_HEIGHT,
         LOGIC_MAX_MSPT,
-        DebugInfo, MAX_WATER_DIST_FOR_SEED_SPREAD,
+        DebugInfo,
+        MAX_WATER_DIST_FOR_SEED_SPREAD,
+        NUM_SHOP_ITEMS,
+        ShopItem,
     },
-    levels::{LEVELS, LevelState},
+    levels::{
+        LEVELS,
+        LevelState
+    },
+    scoreboard::{SCORE_BANNER_VERT, ScoreboardArt, ShopItemFill}, art::{PlusWater, PlusSeed},
 };
 
 use super::art::BoardArt;
 
-pub const TIMER_RESET: usize = 50;
 pub const INVINC_TIME: usize = 100;
 
-pub fn reset() -> GameState {
+pub fn reset() -> (GameState, Box<dyn LevelState>) {
     let current_level_index = 0;
     let level = &LEVELS[current_level_index];
+    let mut l = (level.new_level_state)();
+    let shop = l.new_shop();
     println!("Level 1: {}", level.name);
     let mut board = Board::from_bytes(level.raw_board);
+    let mut scoreboard = Board::from_bytes(SCORE_BANNER_VERT);
+    scoreboard.shop_fill(&shop);
     let snake = Snake::new((5, 5), Dir::Right, 5);
 
     // _place_debug(&mut board);
 
-    GameState {
+    let s = GameState {
         level,
+        scoreboard,
+        shop,
         board,
         snake,
-        coins: 0,
+        coins: 300,
         invinc_time: 0,
         failed: false,
         frame_num: 0,
         debug_screen: false,
         debug_info: DebugInfo::default(),
         salt: rand::thread_rng().gen(),
-    }
+    };
+
+    (s, l)
 }
 
 const NUM_BOARD_ADVANCE_THREADS: u32 = 4;
 
 ///////////////////////////////////////////////////////////
-pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, rx: Receiver<UserAction>) -> thread::JoinHandle<()> {
+pub fn spawn_logic_thread(s: Arc<RwLock<GameState>>, mut l: Box<dyn LevelState>, rx: Receiver<UserAction>) -> thread::JoinHandle<()> {
     // Poll the Lazy
     crate::text::GRIDS.len();
 
     thread::spawn(move || {
         let mut pool = Pool::new(NUM_BOARD_ADVANCE_THREADS);
-        let mut l: Box<dyn LevelState> = s.write().unwrap().reset_level().expect("No levels?");
         loop {
             let start = Instant::now();
 
@@ -130,6 +143,12 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn Lev
                         s.snake.point(Dir::Right)
                     }
                 }
+                UserAction::ShopItem(shop_item_num) => {
+                    set_shop_item_selected(s, shop_item_num);
+                }
+                UserAction::Buy => {
+                    buy(s, &mut **l);
+                }
                 UserAction::Restart => if let Some(level_state) = s.next_level() {
                     *l = level_state
                 },
@@ -147,6 +166,48 @@ fn handle_keys(rx: &Receiver<UserAction>, s: &mut GameState, l: &mut Box<dyn Lev
     }
 
     false
+}
+
+fn set_shop_item_selected(s: &mut GameState, shop_item_num: usize) {
+    if shop_item_num > NUM_SHOP_ITEMS {
+        return;
+    }
+    s.scoreboard.shop_item_display(&s.shop, s.shop.selected, ShopItemFill::Clear);
+    s.shop.selected = shop_item_num;
+    s.scoreboard.shop_item_display(&s.shop, s.shop.selected, ShopItemFill::FromItem);
+}
+
+fn buy(s: &mut GameState, l: &mut dyn LevelState) {
+    let ShopItem { kind, mut price } = s.shop.get_selected();
+    price *= s.shop.price_multiplier;
+    
+    println!("Buy! Current coins: {}. Cost: {}", s.coins, price);
+    if price > s.coins {
+        return;
+    }
+    s.coins -= price;
+
+    match kind {
+        super::types::PowerupType::Water => {
+            s.board.explosion(s.snake.head_pos(), PlusWater(1));
+        },
+        super::types::PowerupType::Explosive => {
+            println!("Explosive not implemented yet. Doing nothing.");
+        },
+        super::types::PowerupType::Shovel => {
+            println!("Shovel not implemented yet. Doing nothing.");
+        },
+        super::types::PowerupType::Seed => {
+            s.board.explosion(s.snake.head_pos(), PlusSeed(1));
+        },
+        super::types::PowerupType::Invincibility => {
+            s.invinc_time += INVINC_TIME;
+        },
+    }
+    
+    s.scoreboard.shop_remove(&s.shop);
+    l.reset_shop(s);
+    s.scoreboard.shop_fill(&s.shop);
 }
 
 // Returns true if failed
@@ -249,7 +310,6 @@ pub fn tick(old_cell: &CellState, old_surrounding: [&CellState; 8], new_cell: &m
 
 fn tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell: &mut CellState, _coord: Coord, _s: &GameState) {
     match old_cell.floor {
-        CellFloor::Turf => {}
         CellFloor::Empty | CellFloor::Indicator(..) => {
             // Find a cell that wants to spread to this cell
             let dist = old_surrounding
@@ -454,7 +514,7 @@ fn liquid_flow(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell
 
 #[inline(always)]
 fn can_participate_in_liquid_flow(cell: &CellState) -> bool {
-    cell.floor != CellFloor::Turf && cell.obj != CellObject::Border
+    cell.obj != CellObject::Border
 }
 
 #[inline(always)]
@@ -476,138 +536,6 @@ fn get_local_rng(coord: Coord, s: &GameState) -> impl Rng {
     let hash = hasher.finish();
     rand::rngs::StdRng::seed_from_u64(hash)
 }
-
-/*
-pub fn random_tick(cell: &CellState, surrounding: [&CellState; 8], cell_new: &mut CellState, mut surrounding_new: [&mut CellState; 8]) {
-    let num = rand::thread_rng().gen_range(0..1_000_000);
-    let i = rand::thread_rng().gen_range(0..8);
-    match cell.floor {
-        CellFloor::Turf | CellFloor::DeadSeed | CellFloor::ExplIndicator => {}
-        CellFloor::Lava => {
-            // Spread Lava
-            let to_spread = CellState { floor: CellFloor::Lava, obj: CellObject::None };
-            let spread_to = &mut surrounding_new[i];
-            match spread_to {
-                CellState { obj: CellObject::Border | CellObject::Snake(_, _), .. } => {}
-                CellState { floor: CellFloor::Turf | CellFloor::Lava, .. } => {}
-                CellState { floor: CellFloor::Seed(_) | CellFloor::DeadSeed, .. } => {
-                    **spread_to = to_spread;
-                }
-                CellState { floor: CellFloor::Empty | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(..) | CellObject::SuperPowerup(..) | CellObject::Food(..) } => {
-                    // 1/33 chance of spreading
-                    if num < 30_000 {
-                        **spread_to = to_spread;
-                    }
-                }
-                CellState { floor: CellFloor::Empty | CellFloor::ExplIndicator, obj: CellObject::Wall } => {
-                    // 1/100 chance of spreading
-                    if num < 10_000 {
-                        **spread_to = to_spread;
-                    }
-                }
-                CellState { floor: CellFloor::Water, .. } => {
-                    **spread_to = CellState { floor: CellFloor::Empty, obj: CellObject::Wall };
-                }
-            }
-        }
-        CellFloor::Seed(dist) => {
-            // Spread seed
-            let to_spread = CellFloor::Seed(dist + 1);
-            let spread_to = &mut surrounding_new[i];
-            match spread_to {
-                CellState { obj: CellObject::Border | CellObject::Wall | CellObject::Food(..) | CellObject::Snake(_, _), .. } => {}
-                CellState { floor: CellFloor::Turf | CellFloor::Lava | CellFloor::Seed(_), ..} => {}
-                CellState { floor: CellFloor::Water, obj: CellObject::None | CellObject::Powerup(..) | CellObject::SuperPowerup(..) } => {
-                    // 1/50 chance of spreading
-                    if num < 20_000 {
-                        spread_to.update(to_spread);
-                    }
-                }
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(..) | CellObject::SuperPowerup(..) } => {
-                    // 1/100 chance of spreading
-                    if num < 5_000 {
-                        spread_to.update(to_spread);
-                    }
-                }
-            }
-            let dist_new = surrounding
-                .into_iter()
-                .filter_map(|x| match x.floor {
-                    CellFloor::Seed(dist) => Some(dist),
-                    CellFloor::Water => Some(0),
-                    _ => None,
-                })
-                .min()
-                .unwrap_or(MAX_WATER_DIST) + 1;
-
-            // The new cell could have been changed from being a seed. Only update dist if it is still a seed
-            if let CellFloor::Seed(dist_new_) = &mut cell_new.floor {
-                *dist_new_ = dist_new;
-            }
-            // Still calculate the effects as if it is a seed regardless
-            if !matches!(cell.obj, CellObject::Border | CellObject::Snake(_, _)) {
-                let num = rand::thread_rng().gen_range(0..1_000_000);
-                // 1/1000 chance to spawn food or die
-                if num < 1_000 {
-                    let num = rand::thread_rng().gen_range(0..(MAX_WATER_DIST * MAX_WATER_DIST));
-                    // dist^2/MAX_WATER_DIST^2 chance to spawn die
-                    if num < dist * dist {
-                        cell_new.update(CellFloor::DeadSeed);
-                    } else {
-                        cell_new.update(CellObject::Food(FOOD_AND_POWERUP_LIFETIME));
-                    }
-                }
-            }
-        }
-        CellFloor::Water => {
-            // Spread water
-            let to_spread = CellState { floor: CellFloor::Water, obj: CellObject::None };
-            let spread_to = &mut surrounding_new[i];
-            match spread_to {
-                CellState { obj: CellObject::Border, .. } => {}
-                CellState { floor: CellFloor::Turf | CellFloor::Water | CellFloor::Seed(_), .. } => {}
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::Wall | CellObject::Snake(..) } => {}
-                CellState { floor: CellFloor::Empty | CellFloor::DeadSeed | CellFloor::ExplIndicator, obj: CellObject::None | CellObject::Powerup(..) | CellObject::SuperPowerup(..) | CellObject::Food(..) } => {
-                    // 1/100 chance of spreading
-                    if num < 5_000 {
-                        **spread_to = to_spread;
-                    }
-                }
-                CellState { floor: CellFloor::Lava, ..} => {
-                    **spread_to = CellState { floor: CellFloor::Empty, obj: CellObject::Wall };
-                }
-            }
-        }
-        CellFloor::Empty => {
-            if cell.obj == CellObject::None {
-                // Spontaneously generate
-                // 1/10_000
-                if num < 1 {
-                    if i < 4 {
-                        *cell_new = CellState { floor: CellFloor::Water, obj: CellObject::None };
-                    } else {
-                        *cell_new = CellState { floor: CellFloor::Lava, obj: CellObject::None };
-                    }
-                }
-            }
-        }
-    }
-    match cell.obj {
-        CellObject::Snake(snake_color, life) => {
-            if life == 0 {
-                cell_new.update(CellObject::None);
-                return;
-            }
-            let new_snake_color = match snake_color {
-                SnakeColor::Head | SnakeColor::LightRed => SnakeColor::DarkRed,
-                SnakeColor::DarkRed => SnakeColor::LightRed,
-            };
-            cell_new.update(CellObject::Snake(new_snake_color, life - 1));
-        }
-        _ => {}
-    }
-}
-*/
 
 fn _place_debug(board: &mut Board) {
     board.pt((10, 10), CellFloor::Water { depth: 200 });
@@ -645,6 +573,10 @@ pub enum UserAction {
     Left,
     Down,
     Right,
+
+    ShopItem(usize),
+    Buy,
+
     Restart,
     Quit,
     Debug,

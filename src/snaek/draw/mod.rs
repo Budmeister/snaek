@@ -21,8 +21,16 @@ use super::{
         CellFloor,
         SnakeColor,
         Coord,
-        B_HEIGHT, IndicatorType, Board, LOGIC_MAX_MSPT, DRAW_MAX_USPT
-    }, levels, art::BoardArt
+        B_HEIGHT,
+        IndicatorType,
+        Board,
+        LOGIC_MAX_MSPT,
+        DRAW_MAX_USPT,
+        SB_HEIGHT,
+        SB_WIDTH,
+        PowerupType,
+    }, 
+    art::BoardArt
 };
 
 use crate::sized_color_space;
@@ -158,7 +166,7 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &mut ViewState) {
     }
 
     // Draw scoreboard
-    for (y, row) in v.scoreboard[..].iter().enumerate() {
+    for (y, row) in s.scoreboard[..].iter().enumerate() {
         for (x, cell) in row.iter().enumerate() {
             let rect = ((x * sb_csize + sb_x) as i32, (y * sb_csize) as i32, (sb_csize+1) as u32, (sb_csize+1) as u32);
             if let Some(color) = get_cell_color(*cell, s) {
@@ -248,13 +256,16 @@ fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
         CellFloor::Empty => Some(TERRAIN_COLORS[elev as usize]),
         CellFloor::Water { depth } => Some(WATER_COLORS[depth as usize]),
         CellFloor::Lava { depth } => Some(LAVA_COLORS[depth as usize]),
-        CellFloor::Turf => Some(TURF_COLOR),
         CellFloor::Seed { height, dist } => Some(SEED_COLORS[dist.min(MAX_WATER_DIST) as usize][height as usize]),
         CellFloor::Indicator(IndicatorType::Empty) => None,
-        CellFloor::Indicator(IndicatorType::Explosion) => Some(EXPLOSIVE_COLOR),
-        CellFloor::Indicator(IndicatorType::Dirt) => Some(DIRT_COLOR),
         CellFloor::Indicator(IndicatorType::MSPTNormal) => Some(MSPT_NORMAL_COLOR),
         CellFloor::Indicator(IndicatorType::MSPTOver) => Some(MSPT_OVER_COLOR),
+        
+        CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Water)) => Some(WATER_COLOR),
+        CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Explosive)) => Some(EXPLOSIVE_COLOR),
+        CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Shovel)) => Some(SHOVEL_COLOR),
+        CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Seed)) => Some(SEED_COLOR),
+        CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Invincibility)) => Some(INVINC_COLOR),
     }
 }
 
@@ -270,13 +281,10 @@ fn get_object_color(obj: CellObject, s: &GameState) -> Option<Color> {
     }
 }
 
-pub const SB_WIDTH: usize = 25;
-pub const SB_HEIGHT: usize = 100;
 pub const DS_WIDTH: usize = 100;
 pub const DS_HEIGHT: usize = 100;
 
 pub struct ViewState {
-    pub scoreboard: Board<SB_WIDTH, SB_HEIGHT>,
     pub debug_screen: Board<DS_WIDTH, DS_HEIGHT>,
     pub debug_info: ViewDebugInfo,
 }
@@ -289,7 +297,6 @@ pub struct ViewDebugInfo {
 
 fn reset_view_state() -> ViewState {
     ViewState {
-        scoreboard: Board::<SB_WIDTH, SB_HEIGHT>::from_bytes(levels::SCORE_BANNER_VERT),
         debug_screen: Board::<DS_WIDTH, DS_HEIGHT>::new_filled(CellFloor::Indicator(IndicatorType::Empty)),
         debug_info: ViewDebugInfo::default(),
     }
@@ -302,7 +309,6 @@ type Color = (u8, u8, u8);
 const EMPTY_COLOR: Color = as_color!("#ffffff");
 const WATER_COLOR: Color = as_color!("#3f38ff");
 const LAVA_COLOR: Color = as_color!("#fcb103");
-const TURF_COLOR: Color = as_color!("#94ff8c");
 
 // Object colors
 const WALL_COLOR: Color = as_color!("#000000");
@@ -312,7 +318,7 @@ const BORDER_COLOR: Color = as_color!("#42005e");
 const SNAKE_COLOR_LIGHT_RED: Color = as_color!("#ff6038");
 const SNAKE_COLOR_DARK_RED: Color = as_color!("#871d03");
 const SNAKE_COLOR_HEAD: Color = as_color!("#eb9b2d");
-const SNAKE_COLOR_HEAD_WITH_INVINC: Color = as_color!("#f8ffbd");
+const SNAKE_COLOR_HEAD_WITH_INVINC: Color = INVINC_COLOR;
 const SEED_COLORS: [[Color; 256]; MAX_WATER_DIST as usize + 1] = [
     seed_colors::SEED_HEIGHT_COLORS_0,
     seed_colors::SEED_HEIGHT_COLORS_1,
@@ -490,10 +496,10 @@ mod seed_colors {
 
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
-const INVINC_COLOR: Color = as_color!("#000000");
+const INVINC_COLOR: Color = as_color!("#262626");
 
 // Other colors
-const DIRT_COLOR: Color = as_color!("#422417");
+const SHOVEL_COLOR: Color = as_color!("#422417");
 
 sized_color_space!{
     TERRAIN_COLORS = [

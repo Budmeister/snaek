@@ -7,7 +7,7 @@ use sdl2::{
         Event,
         EventPollIterator
     },
-    keyboard::Keycode
+    keyboard::Keycode, sys::KeyCode
 };
 
 use super::{
@@ -78,12 +78,16 @@ pub fn create_window((width, height): (u32, u32)) -> (WindowCanvas, Sdl) {
 
 fn key_to_user_action(keycode: Keycode) -> Option<UserAction> {
     match keycode {
-        Keycode::Up => Some(UserAction::Up),
-        Keycode::Left => Some(UserAction::Left),
-        Keycode::Down => Some(UserAction::Down),
-        Keycode::Right => Some(UserAction::Right),
+        Keycode::Up | Keycode::W => Some(UserAction::Up),
+        Keycode::Left | Keycode::A => Some(UserAction::Left),
+        Keycode::Down | Keycode::S => Some(UserAction::Down),
+        Keycode::Right | Keycode::D => Some(UserAction::Right),
         Keycode::F => Some(UserAction::Restart),
         Keycode::F3 => Some(UserAction::Debug),
+        Keycode::Kp1 => Some(UserAction::ShopItem(0)),
+        Keycode::Kp2 => Some(UserAction::ShopItem(1)),
+        Keycode::Kp3 => Some(UserAction::ShopItem(2)),
+        Keycode::Space => Some(UserAction::Buy),
         _ => None,
     }
 }

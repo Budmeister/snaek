@@ -1,8 +1,20 @@
-use rand::Rng;
+use crate::snaek::{
+    types::{
+        GameState,
+        ShopState,
+    },
+    art::{
+        PlusLava,
+        BoardArt,
+    }
+};
 
-use crate::snaek::art::{PlusLava, BoardArt};
-
-use super::{Level, LevelState};
+use super::{
+    Level,
+    LevelState,
+    reset_shop_rand,
+    new_shop_rand
+};
 
 
 pub static VOLCANO_LEVEL: Level = Level {
@@ -19,11 +31,14 @@ impl VolcanoState {
     }
 }
 impl LevelState for VolcanoState {
-    fn update(&mut self, s: &mut crate::snaek::types::GameState) {
+    fn update(&mut self, s: &mut GameState) {
         s.board.pt((95, 75), PlusLava(1));
     }
-    fn choose_powerup_type(&mut self, s: &mut crate::snaek::types::GameState) -> crate::snaek::types::PowerupType {
-        rand::thread_rng().gen()
+    fn reset_shop(&mut self, s: &mut GameState) {
+        reset_shop_rand(&mut s.shop, |_| 10);
+    }
+    fn new_shop(&mut self) -> ShopState {
+        new_shop_rand(10, |_| 10)
     }
 }
 
