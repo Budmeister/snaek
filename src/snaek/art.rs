@@ -1,4 +1,4 @@
-use super::types::{Coord, Board, CellState, CellFloor, CellObject, IndicatorType, PowerupType};
+use super::types::{Board, CellFloor, CellObject, CellState, Coord, IndicatorType, PowerupType, MAX_SATURATION};
 use std::mem::discriminant as variant;
 
 use crate::text::{GRIDS, C_WIDTH};
@@ -128,7 +128,7 @@ impl Fill for PlusSeed {
     fn fill(&self, cell: &mut CellState) {
         match &mut cell.floor {
             CellFloor::Lava { depth: height } | CellFloor::Water { depth: height }  | CellFloor::Seed { height, .. } => *height = height.saturating_add(self.0),
-            CellFloor::Empty => cell.floor = CellFloor::Seed { height: self.0, dist: 0 },
+            CellFloor::Empty => cell.floor = CellFloor::Seed { height: self.0, saturation: MAX_SATURATION },
             _ => {}
         }
     }

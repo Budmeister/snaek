@@ -13,7 +13,7 @@ pub enum CellFloor {
     Empty,
     Water { depth: u8 },
     Lava { depth: u8 },
-    Seed { height: u8, dist: u8 },
+    Seed { height: u8, saturation: i8 },
     Indicator(IndicatorType),
 }
 impl CellFloor {
@@ -73,14 +73,18 @@ pub enum SnakeColor {
     Head,
 }
 
-pub const MAX_WATER_DIST_FOR_SEED_SPREAD: u8 = 10;
-pub const MAX_WATER_DIST: u8 = 20;
+// Max seed height = fertility + saturation
+pub const MAX_FERTILITY: i8 = 15;
+pub const MAX_SEED_HEIGHT: i8 = 30;
+pub const MAX_SATURATION: i8 = 15;
+pub const MIN_SATURATION_FOR_SEED_SPREAD: i8 = 4;
 
 #[derive(Clone, Copy, Hash, PartialEq, Default, Debug)]
 pub struct CellState {
     pub floor: CellFloor,
     pub obj: CellObject,
     pub elev: u8,
+    pub fertility: i8,
 }
 impl CellState {
     #[inline(always)]
@@ -136,7 +140,7 @@ impl<const W: usize, const H: usize> Board<W, H> {
     }
 
     pub fn new_filled(fill: impl Fill) -> Self {
-        let mut cell = CellState { floor: CellFloor::Empty, obj: CellObject::None, elev: 0 };
+        let mut cell = CellState { floor: CellFloor::Empty, obj: CellObject::None, elev: 0, fertility: 0 };
         cell.update(fill);
         Self(Box::new([[cell; W]; H]))
     }
@@ -146,20 +150,21 @@ impl<const W: usize, const H: usize> Board<W, H> {
             .map(|_| vec![CellState::default(); W])
             .collect();
 
-        for (i, [&floor, &elev]) in bytes.iter().chunks::<2>().enumerate() {
+        for (i, [&floor, &elev, &fertility]) in bytes.iter().chunks::<3>().enumerate() {
             let x = i % W;
             let y = i / W;
 
+            let fertility = fertility as i8;
             if y < H {
                 board_vec[y][x] = match floor {
-                    0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev },
-                    0x1 => CellState { floor: CellFloor::Water { depth: 1 }, obj: CellObject::None, elev },
-                    0x2 => CellState { floor: CellFloor::Lava { depth: 1 }, obj: CellObject::None, elev },
-                    0x3 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev },
-                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev },
-                    0x5 => CellState { floor: CellFloor::Seed { height: 1, dist: 0 }, obj: CellObject::None, elev },
-                    0x6 => CellState { floor: CellFloor::Indicator(IndicatorType::Coin), obj: CellObject::None, elev },
-                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::PM), obj: CellObject::None, elev },
+                    0x0 => CellState { floor: CellFloor::Empty, obj: CellObject::None, elev, fertility },
+                    0x1 => CellState { floor: CellFloor::Water { depth: 1 }, obj: CellObject::None, elev, fertility },
+                    0x2 => CellState { floor: CellFloor::Lava { depth: 1 }, obj: CellObject::None, elev, fertility },
+                    0x3 => CellState { floor: CellFloor::Empty, obj: CellObject::Wall, elev, fertility },
+                    0x4 => CellState { floor: CellFloor::Empty, obj: CellObject::Border, elev, fertility },
+                    0x5 => CellState { floor: CellFloor::Seed { height: 1, saturation: MAX_SATURATION }, obj: CellObject::None, elev, fertility },
+                    0x6 => CellState { floor: CellFloor::Indicator(IndicatorType::Coin), obj: CellObject::None, elev, fertility },
+                    0x7 => CellState { floor: CellFloor::Indicator(IndicatorType::PM), obj: CellObject::None, elev, fertility },
                     _ => CellState::default(),
                 };
             }

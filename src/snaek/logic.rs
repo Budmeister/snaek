@@ -13,32 +13,41 @@ use rand::{
     SeedableRng,
 };
 
+use crate::snaek::types::MAX_SATURATION;
+
 use super::{
     types::{
+        board_ops,
         Board,
-        Dir,
-        GameState,
-        Snake,
+        CellFloor,
         CellObject,
         CellState,
-        CellFloor,
         Coord,
-        MAX_WATER_DIST,
-        SnakeColor,
-        B_WIDTH,
-        board_ops,
-        B_HEIGHT,
-        LOGIC_MAX_MSPT,
         DebugInfo,
-        MAX_WATER_DIST_FOR_SEED_SPREAD,
-        NUM_SHOP_ITEMS,
+        Dir,
+        GameState,
         ShopItem,
+        Snake,
+        SnakeColor,
+        B_HEIGHT,
+        B_WIDTH,
+        LOGIC_MAX_MSPT,
+        MIN_SATURATION_FOR_SEED_SPREAD,
+        NUM_SHOP_ITEMS,
     },
     levels::{
         LEVELS,
-        LevelState
+        LevelState,
     },
-    scoreboard::{SCORE_BANNER_VERT, ScoreboardArt, ShopItemFill}, art::{PlusWater, PlusSeed},
+    scoreboard::{
+        SCORE_BANNER_VERT,
+        ScoreboardArt,
+        ShopItemFill
+    },
+    art::{
+        PlusWater,
+        PlusSeed,
+    },
 };
 
 use super::art::BoardArt;
@@ -317,70 +326,56 @@ fn tick_floor(old_cell: &CellState, old_surrounding: &[&CellState; 8], new_cell:
     match old_cell.floor {
         CellFloor::Empty | CellFloor::Indicator(..) => {
             // Find a cell that wants to spread to this cell
-            let dist = old_surrounding
+            let saturation = old_surrounding
                 .iter()
                 .find_map(|cell| {
-                    if let CellFloor::Seed { dist, .. } = cell.floor {
-                        let new_dist = dist + 1;
-                        if new_dist <= MAX_WATER_DIST_FOR_SEED_SPREAD {
-                            return Some(new_dist);
+                    if let CellFloor::Seed { saturation, .. } = cell.floor {
+                        if saturation > 0 && saturation - 1 >= MIN_SATURATION_FOR_SEED_SPREAD {
+                            return Some(saturation - 1);
                         }
                     }
                     None
                 });
             // At least one seed would like to spread to this cell
-            if dist.is_some() && rand::thread_rng().gen_range(0..100) == 0 {
-                // max speed for dist is 1, so start at MAX_WATER_DIST and decrease from there
-                new_cell.update(CellFloor::Seed { height: 1, dist: MAX_WATER_DIST_FOR_SEED_SPREAD });
+            if let Some(saturation) = saturation {
+                if rand::thread_rng().gen_range(0..100) == 0 {
+                    new_cell.update(CellFloor::Seed { height: 1, saturation });
+                }
             }
         }
         CellFloor::Water { .. } => {
         }
         CellFloor::Lava { .. } => {
         }
-        CellFloor::Seed { height, dist } => {
-            #[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
-            enum Delta {
-                Decrement,
-                NoChange,
-                Increment,
-                One,
-            }
-            let mut delta = Delta::Increment;
+        CellFloor::Seed { height, saturation } => {
+            let mut new_saturation = saturation - 1;
             for cell in old_surrounding {
                 match cell.floor {
-                    CellFloor::Seed { dist: other_dist, .. } => {
-                        if other_dist < dist.saturating_sub(1) {
-                            delta = Delta::Decrement;
-                        } else if other_dist < dist {
-                            delta = delta.min(Delta::NoChange);
+                    CellFloor::Seed { saturation: other_sat, .. } => {
+                        // + is okay because saturation <= MAX_SATURATION
+                        if other_sat > saturation + 1 {
+                            new_saturation = new_saturation.max(other_sat - 1);
                         }
                     }
-                    CellFloor::Water { .. } => delta = Delta::One,
+                    CellFloor::Water { .. } => {
+                        new_saturation = MAX_SATURATION;
+                        break;
+                    }
                     _ => {}
                 }
             }
-            // If None, then this cell should increment its dist
-            let new_dist = match delta {
-                Delta::Decrement => dist.saturating_sub(1),
-                Delta::NoChange => dist,
-                Delta::Increment => dist.saturating_add(1),
-                Delta::One => 1,
-            };
 
-            let mut new_height = height;
+            let max_height = saturation + old_cell.fertility;
+            let max_height = if max_height < 0 { 0 } else { max_height as u8 };
+            let mut new_height = height.min(max_height);
 
-            if new_dist <= MAX_WATER_DIST_FOR_SEED_SPREAD {
-                if rand::thread_rng().gen_range(0..100) == 0 {
-                    new_height = new_height.saturating_add(1);
-                }
-            } else {
-                new_height = new_height.saturating_sub(1);
+            if new_height != max_height && rand::thread_rng().gen_range(0..100) == 0 {
+                new_height += 1;
             }
-            if new_dist > MAX_WATER_DIST {
-                new_cell.update(CellFloor::Empty);
+            if new_height != 0 {
+                new_cell.update(CellFloor::Seed { height: new_height, saturation: new_saturation });
             } else {
-                new_cell.update(CellFloor::Seed { height: new_height, dist: new_dist });
+                new_cell.update(CellFloor::Empty);
             }
         }
     }

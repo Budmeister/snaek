@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -8,6 +7,7 @@ use into_color::{as_color, color_space};
 fn main() {
     let floor_dir = Path::new("res/images/floor/");
     let elev_dir = Path::new("res/images/elev/");
+    let fert_dir = Path::new("res/images/fert/");
     let output_dir = Path::new("res/levels/");
     fs::create_dir_all(output_dir).expect("Failed to create output directory");
 
@@ -16,15 +16,19 @@ fn main() {
         let floor_path = floor_entry.path();
         let mut elev_path = PathBuf::from(elev_dir);
         elev_path.push(floor_path.file_name().expect("Unable to get filename"));
+        let mut fert_path = PathBuf::from(fert_dir);
+        fert_path.push(floor_path.file_name().expect("Unable to get filename"));
 
-        if floor_path.is_file() && elev_path.is_file() {
+        if floor_path.is_file() && elev_path.is_file() && fert_path.is_file() {
             let floor_img = image::open(&floor_path).expect("Failed to open floor image");
             let elev_img = image::open(&elev_path).expect("Failed to open elev image");
+            let fert_img = image::open(&fert_path).expect("Failed to open fert image");
             let mut output = Vec::new();
 
-            for (pixel, elev) in floor_img.pixels().zip(elev_img.pixels()) {
+            for ((pixel, elev), fert) in floor_img.pixels().zip(elev_img.pixels()).zip(fert_img.pixels()) {
                 let color = pixel.2.to_rgba();
                 let elev = elev.2.to_rgba();
+                let fert = fert.2.to_rgba();
                 let byte;
                 if color == as_rgba!(EMPTY_COLOR) {
                     byte = 0x0; // Empty
@@ -49,11 +53,16 @@ fn main() {
 
                 let elev = elev[0];
                 output.push(elev);
+
+                let fert = fert[0];
+                output.push(fert);
             }
 
             let file_name = output_dir.join(floor_path.file_stem().unwrap()).with_extension("bin");
             let mut file = File::create(file_name).expect("Failed to create output file");
             file.write_all(&output).expect("Failed to write to output file");
+        } else {
+            println!("Unable to find all files for {:?}", floor_path.file_name().expect("Unable to get filename"));
         }
     }
 }

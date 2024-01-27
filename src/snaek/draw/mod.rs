@@ -4,31 +4,34 @@ use std::{
         RwLock,
         mpsc::Sender
     },
+    thread,
     time::{
         Duration,
         Instant
     },
-    thread,
+    mem::size_of,
 };
 
 use super::{
     logic::UserAction,
     types::{
-        GameState,
-        B_WIDTH,
-        CellState,
-        CellObject,
-        CellFloor,
-        SnakeColor,
-        Coord,
-        B_HEIGHT,
-        IndicatorType,
         Board,
-        LOGIC_MAX_MSPT,
+        CellFloor,
+        CellObject,
+        CellState,
+        Coord,
+        GameState,
+        IndicatorType,
+        PowerupType,
+        SnakeColor,
+        B_HEIGHT,
+        B_WIDTH,
         DRAW_MAX_USPT,
+        LOGIC_MAX_MSPT,
+        MAX_FERTILITY,
+        MAX_SEED_HEIGHT,
         SB_HEIGHT,
         SB_WIDTH,
-        PowerupType,
     }, 
     art::BoardArt
 };
@@ -105,8 +108,6 @@ pub fn window_loop<F: Frontend>(mut f: F, s: Arc<RwLock<GameState>>, tx: Sender<
 }
 
 ///////////////////////////////////////////////////////////
-
-use crate::snaek::types::MAX_WATER_DIST;
 
 /// The width of a single cell in pixels
 const C_SIZE: usize = 10;
@@ -245,18 +246,19 @@ pub fn draw_board<F: Frontend>(f: &mut F, s: &GameState, v: &mut ViewState) {
 
 fn get_cell_color(cell: CellState, s: &GameState) -> Option<Color> {
     if cell.obj == CellObject::None {
-        get_floor_color(cell.floor, cell.elev)
+        get_floor_color(cell.floor, cell.elev, cell.fertility)
     } else {
         get_object_color(cell.obj, s)
     }
 }
 
-fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
+fn get_floor_color(floor: CellFloor, elev: u8, fertility: i8) -> Option<Color> {
+    let fertility = if fertility < 0 { 0 } else { fertility as usize };
     match floor {
-        CellFloor::Empty => Some(TERRAIN_COLORS[elev as usize]),
+        CellFloor::Empty => Some(TERRAIN_COLORS[elev as usize][fertility]),
         CellFloor::Water { depth } => Some(WATER_COLORS[depth as usize]),
         CellFloor::Lava { depth } => Some(LAVA_COLORS[depth as usize]),
-        CellFloor::Seed { height, dist } => Some(SEED_COLORS[dist.min(MAX_WATER_DIST) as usize][height as usize]),
+        CellFloor::Seed { height, saturation } => Some(SEED_COLORS[elev as usize][fertility][height as usize]),
         CellFloor::Indicator(IndicatorType::Empty) => None,
         CellFloor::Indicator(IndicatorType::MSPTNormal) => Some(MSPT_NORMAL_COLOR),
         CellFloor::Indicator(IndicatorType::MSPTOver) => Some(MSPT_OVER_COLOR),
@@ -269,6 +271,10 @@ fn get_floor_color(floor: CellFloor, elev: u8) -> Option<Color> {
         CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Seed)) => Some(SEED_COLOR),
         CellFloor::Indicator(IndicatorType::Powerup(PowerupType::Invincibility)) => Some(INVINC_COLOR),
     }
+}
+
+fn get_seed_color(elev: u8, fertility: i8, height: u8, saturation: i8) -> Color {
+    todo!()
 }
 
 fn get_object_color(obj: CellObject, s: &GameState) -> Option<Color> {
@@ -321,29 +327,29 @@ const SNAKE_COLOR_LIGHT_RED: Color = as_color!("#ff6038");
 const SNAKE_COLOR_DARK_RED: Color = as_color!("#871d03");
 const SNAKE_COLOR_HEAD: Color = as_color!("#eb9b2d");
 const SNAKE_COLOR_HEAD_WITH_INVINC: Color = INVINC_COLOR;
-const SEED_COLORS: [[Color; 256]; MAX_WATER_DIST as usize + 1] = [
-    seed_colors::SEED_HEIGHT_COLORS_0,
-    seed_colors::SEED_HEIGHT_COLORS_1,
-    seed_colors::SEED_HEIGHT_COLORS_2,
-    seed_colors::SEED_HEIGHT_COLORS_3,
-    seed_colors::SEED_HEIGHT_COLORS_4,
-    seed_colors::SEED_HEIGHT_COLORS_5,
-    seed_colors::SEED_HEIGHT_COLORS_6,
-    seed_colors::SEED_HEIGHT_COLORS_7,
-    seed_colors::SEED_HEIGHT_COLORS_8,
-    seed_colors::SEED_HEIGHT_COLORS_9,
-    seed_colors::SEED_HEIGHT_COLORS_10,
-    seed_colors::SEED_HEIGHT_COLORS_11,
-    seed_colors::SEED_HEIGHT_COLORS_12,
-    seed_colors::SEED_HEIGHT_COLORS_13,
-    seed_colors::SEED_HEIGHT_COLORS_14,
-    seed_colors::SEED_HEIGHT_COLORS_15,
-    seed_colors::SEED_HEIGHT_COLORS_16,
-    seed_colors::SEED_HEIGHT_COLORS_17,
-    seed_colors::SEED_HEIGHT_COLORS_18,
-    seed_colors::SEED_HEIGHT_COLORS_19,
-    seed_colors::SEED_HEIGHT_COLORS_20,
-];
+// const SEED_COLORS: [[Color; 256]; MAX_WATER_DIST as usize + 1] = [
+//     seed_colors::SEED_HEIGHT_COLORS_0,
+//     seed_colors::SEED_HEIGHT_COLORS_1,
+//     seed_colors::SEED_HEIGHT_COLORS_2,
+//     seed_colors::SEED_HEIGHT_COLORS_3,
+//     seed_colors::SEED_HEIGHT_COLORS_4,
+//     seed_colors::SEED_HEIGHT_COLORS_5,
+//     seed_colors::SEED_HEIGHT_COLORS_6,
+//     seed_colors::SEED_HEIGHT_COLORS_7,
+//     seed_colors::SEED_HEIGHT_COLORS_8,
+//     seed_colors::SEED_HEIGHT_COLORS_9,
+//     seed_colors::SEED_HEIGHT_COLORS_10,
+//     seed_colors::SEED_HEIGHT_COLORS_11,
+//     seed_colors::SEED_HEIGHT_COLORS_12,
+//     seed_colors::SEED_HEIGHT_COLORS_13,
+//     seed_colors::SEED_HEIGHT_COLORS_14,
+//     seed_colors::SEED_HEIGHT_COLORS_15,
+//     seed_colors::SEED_HEIGHT_COLORS_16,
+//     seed_colors::SEED_HEIGHT_COLORS_17,
+//     seed_colors::SEED_HEIGHT_COLORS_18,
+//     seed_colors::SEED_HEIGHT_COLORS_19,
+//     seed_colors::SEED_HEIGHT_COLORS_20,
+// ];
 mod seed_colors {
     use super::sized_color_space;
 
@@ -496,6 +502,7 @@ mod seed_colors {
     }
 }
 
+
 // Powerup colors
 const EXPLOSIVE_COLOR: Color = as_color!("#696969");
 const INVINC_COLOR: Color = as_color!("#262626");
@@ -505,14 +512,40 @@ const SHOVEL_COLOR: Color = as_color!("#422417");
 const COIN_COLOR: Color = as_color!("#bdb600");
 const PM_COLOR: Color = as_color!("#62fa4b");
 
-sized_color_space!{
-    TERRAIN_COLORS = [
-        ("#000000", 0.0),
-        ("#422417", 0.5),
-        ("#ffffff", 1.0)
-    ],
-    NUM_TERRAIN_COLORS = 256
-}
+// sized_color_space!{
+//     TERRAIN_COLORS = [
+//         ("#000000", 0.0),
+//         ("#422417", 0.5),
+//         ("#ffffff", 1.0)
+//     ],
+//     NUM_TERRAIN_COLORS = 256
+// }
+
+const TERRAIN_COLORS: &[[Color; (MAX_FERTILITY as usize + 1)]; (u8::MAX as usize + 1)] = {
+    const TERRAIN_COLORS: &[u8; size_of::<Color>() * (MAX_FERTILITY as usize + 1) * (u8::MAX as usize + 1)] = include_bytes!("../../../res/colors/terrain_colors.bin");
+
+    // SAFETY: Casting a pointer to an array of bytes to a pointer to a 2D array of color objects
+    // Alignment: Color = (u8, u8, u8) has the same alignment as u8, so alignment is not a problem. 
+    // Size: The size of a multidimensional array is the product of the size of T and all the dimensions.
+    //  We take care of that by ensuring above the array has such size. 
+    // As long as the colors are laid out correctly, we can do this conversion.
+    unsafe {
+        &*(TERRAIN_COLORS.as_ptr() as *const [[Color; (MAX_FERTILITY as usize + 1)]; (u8::MAX as usize + 1)])
+    }
+};
+
+const SEED_COLORS: &[[[Color; (MAX_SEED_HEIGHT as usize + 1)]; (MAX_FERTILITY as usize + 1)]; (u8::MAX as usize + 1)] = {
+    const SEED_COLORS: &[u8; size_of::<Color>() * (MAX_SEED_HEIGHT as usize + 1) * (MAX_FERTILITY as usize + 1) * (u8::MAX as usize + 1)] = include_bytes!("../../../res/colors/seed_colors.bin");
+    
+    // SAFETY: Casting a pointer to an array of bytes to a pointer to a 2D array of color objects
+    // Alignment: Color = (u8, u8, u8) has the same alignment as u8, so alignment is not a problem. 
+    // Size: The size of a multidimensional array is the product of the size of T and all the dimensions.
+    //  We take care of that by ensuring above the array has such size. 
+    // As long as the colors are laid out correctly, we can do this conversion.
+    unsafe {
+        &*(SEED_COLORS.as_ptr() as *const [[[Color; (MAX_SEED_HEIGHT as usize + 1)]; (MAX_FERTILITY as usize + 1)]; (u8::MAX as usize + 1)])
+    }
+};
 
 sized_color_space!{
     WATER_COLORS = [
